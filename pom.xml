@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.tibudget</groupId>
+	<artifactId>tibudget-collector-test-utils</artifactId>
+	<version>0.1-SNAPSHOT</version>
+	<packaging>jar</packaging>
+
+	<name>ti'bu collector test utils</name>
+	<description />
+	<url>https://tibudget.com</url>
+	<organization><name>ti'bu</name></organization>
+
+	<!-- Specify hard-coded project properties here -->
+	<properties>
+		<!-- To make the build platform independent -->
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.compiler.release>11</maven.compiler.release>
+
+		<!-- ti'bu API version -->
+		<tibudget.api.version>0.40</tibudget.api.version>
+	</properties>
+
+	<scm>
+		<connection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</connection>
+		<tag>HEAD</tag>
+	</scm>
+
+	<distributionManagement>
+		<repository>
+			<id>tibudget-repository-release</id>
+			<name>tibudget Release Repository</name>
+			<url>s3://tibudget-maven-repository/release</url>
+		</repository>
+		<snapshotRepository>
+			<id>tibudget-repository-snapshot</id>
+			<name>tibudget Snapshot Repository</name>
+			<url>s3://tibudget-maven-repository/snapshot</url>
+		</snapshotRepository>
+	</distributionManagement>
+
+	<dependencies>
+
+		<!-- Needed to parse HTML -->
+		<dependency>
+			<groupId>org.jsoup</groupId>
+			<artifactId>jsoup</artifactId>
+			<version>1.18.3</version>
+		</dependency>
+		<dependency>
+			<!-- Marked as provided by jsoup but we need it -->
+			<groupId>org.jspecify</groupId>
+			<artifactId>jspecify</artifactId>
+			<version>1.0.0</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.google.code.gson</groupId>
+			<artifactId>gson</artifactId>
+			<version>2.12.1</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.squareup.okhttp3</groupId>
+			<artifactId>okhttp</artifactId>
+			<version>4.12.0</version>
+		</dependency>
+
+		<!-- The ti'bu API (Provided by ti'bu app) -->
+		<dependency>
+			<groupId>com.tibudget</groupId>
+			<artifactId>tibudget-api</artifactId>
+			<version>${tibudget.api.version}</version>
+			<scope>provided</scope>
+		</dependency>
+
+		<!-- JUnit 5 -->
+
+		<!-- API of JUnit 5 -->
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+			<version>5.12.1</version>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Engine to run tests -->
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-engine</artifactId>
+			<version>5.12.1</version>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- AssertJ more asserts -->
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<version>3.27.3</version>
+			<scope>test</scope>
+		</dependency>
+
+	</dependencies>
+
+	<build>
+		<extensions>
+			<extension>
+				<groupId>com.github.seahen</groupId>
+				<artifactId>maven-s3-wagon</artifactId>
+				<version>1.3.3</version>
+			</extension>
+		</extensions>
+		<plugins>
+			<!-- Java compiler version -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.13.0</version>
+				<configuration>
+					<release>11</release>
+					<encoding>${project.build.sourceEncoding}</encoding>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>
