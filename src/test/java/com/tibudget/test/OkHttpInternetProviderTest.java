@@ -16,7 +16,6 @@ public class OkHttpInternetProviderTest {
 
         InternetProvider.Response response = internet.get(
                 "https://httpbin.org/get",
-                Map.of(),
                 Map.of()
         );
 

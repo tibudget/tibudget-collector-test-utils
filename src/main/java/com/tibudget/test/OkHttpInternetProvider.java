@@ -1,184 +1,208 @@
 package com.tibudget.test;
 
 import com.tibudget.api.InternetProvider;
-import okhttp3.*;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
 
 public class OkHttpInternetProvider implements InternetProvider {
 
     private final OkHttpClient client;
-
-    public OkHttpInternetProvider(OkHttpClient client) {
-        this.client = client;
-    }
+    private final File downloadDir;
 
     public OkHttpInternetProvider() {
-        this(new OkHttpClient());
+        this.client = new OkHttpClient.Builder()
+                // A simple cookie jar is enough for this test
+                .cookieJar(new SimpleCookieJar())
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build();
+        this.downloadDir = new File("target/downloads/");
     }
 
-    /* =============================
+    /* =========================
      * GET
-     * ============================= */
+     * ========================= */
 
     @Override
-    public Response get(String url,
-                        Map<String, String> headers,
-                        Map<String, String> cookies) throws IOException {
-
-        Request request = buildRequest("GET", url, null, null, headers, cookies);
+    public Response get(
+            String url,
+            Map<String, String> headers
+    ) throws IOException {
+        Request request = buildRequest("GET", url, null, headers);
         return execute(request, "GET");
     }
 
-    /* =============================
+    /* =========================
      * POST
-     * ============================= */
+     * ========================= */
 
     @Override
-    public Response post(String url,
-                         String body,
-                         String contentType,
-                         Map<String, String> headers,
-                         Map<String, String> cookies) throws IOException {
+    public Response post(
+            String url,
+            String body,
+            String contentType,
+            Map<String, String> headers
+    ) throws IOException {
 
-        MediaType mediaType = contentType != null
-                ? MediaType.parse(contentType)
-                : MediaType.parse("text/plain; charset=utf-8");
+        RequestBody requestBody = RequestBody.create(
+                body,
+                MediaType.parse(contentType)
+        );
 
-        RequestBody requestBody =
-                body != null ? RequestBody.create(body, mediaType) : RequestBody.create(new byte[0]);
+        Map<String, String> hdrs = new HashMap<>(headers);
+        hdrs.put("Content-Type", contentType);
 
-        Request request = buildRequest("POST", url, requestBody, contentType, headers, cookies);
+        Request request = buildRequest("POST", url, requestBody, hdrs);
         return execute(request, "POST");
     }
 
-    /* =============================
+    /* =========================
      * DOWNLOAD
-     * ============================= */
+     * ========================= */
 
     @Override
-    public Response downloadFile(String url,
-                                 Map<String, String> headers,
-                                 Map<String, String> cookies,
-                                 String forceContentType) throws IOException {
+    public Response downloadFile(
+            String url,
+            Map<String, String> headers,
+            String forceContentType
+    ) throws IOException {
 
-        Request request = buildRequest("GET", url, null, null, headers, cookies);
+        Request request = buildRequest("GET", url, null, headers);
 
         try (okhttp3.Response response = client.newCall(request).execute()) {
 
             if (!response.isSuccessful()) {
-                throw new IOException("HTTP " + response.code() + " " + response.message());
+                throw new IOException("HTTP " + response.code());
             }
 
-            String fileName = extractFileName(url);
-            File target = Files.createTempFile("download-", "-" + fileName).toFile();
+            String contentType = response.header("Content-Type");
+            if (forceContentType != null) {
+                contentType = forceContentType;
+            }
 
-            Files.write(target.toPath(), response.body().bytes());
+            String extension = guessExtension(contentType);
+            File out = File.createTempFile("dl_", "." + extension, downloadDir);
 
-            return new Response(
-                    response.code(),
-                    response.message(),
-                    "DOWNLOAD",
-                    url,
-                    response.protocol().toString(),
-                    target.getAbsolutePath(),
-                    toSingleValueMap(response.headers()),
-                    extractCookies(response)
+            try (InputStream in = response.body().byteStream();
+                 OutputStream os = new FileOutputStream(out)) {
+                in.transferTo(os);
+            }
+
+            return buildResponse(
+                    response,
+                    "GET",
+                    out.getAbsolutePath()
             );
         }
     }
 
-    /* =============================
-     * Internals
-     * ============================= */
+    /* =========================
+     * CORE EXECUTION
+     * ========================= */
 
     private Response execute(Request request, String method) throws IOException {
 
         try (okhttp3.Response response = client.newCall(request).execute()) {
 
-            String body = response.body() != null ? response.body().string() : null;
+            String body = response.body() != null
+                    ? response.body().string()
+                    : "";
 
-            return new Response(
-                    response.code(),
-                    response.message(),
-                    method,
-                    request.url().toString(),
-                    response.protocol().toString(),
-                    body,
-                    toSingleValueMap(response.headers()),
-                    extractCookies(response)
-            );
+            return buildResponse(response, method, body);
         }
     }
 
-    private Request buildRequest(String method,
-                                 String url,
-                                 RequestBody body,
-                                 String contentType,
-                                 Map<String, String> headers,
-                                 Map<String, String> cookies) {
+    /* =========================
+     * REQUEST BUILDING
+     * ========================= */
+
+    private Request buildRequest(
+            String method,
+            String url,
+            RequestBody body,
+            Map<String, String> headers
+    ) {
 
         Request.Builder builder = new Request.Builder().url(url);
 
-        if (headers != null) {
-            headers.forEach((name, value) -> {
-                // Remove accept-encoding header so okHttp can manage compression automatically
-                if (!"accept-encoding".equalsIgnoreCase(name)) {
-                    builder.addHeader(name, value);
-                }
-            });
-        }
-
-        if (cookies != null && !cookies.isEmpty()) {
-            builder.addHeader("Cookie", formatCookies(cookies));
+        // Headers (filter Accept-Encoding)
+        for (Map.Entry<String, String> e : headers.entrySet()) {
+            if (!e.getKey().equalsIgnoreCase("Accept-Encoding")
+                    && !e.getKey().equalsIgnoreCase("Set-Cookie")) {
+                builder.addHeader(e.getKey(), e.getValue());
+            }
         }
 
         if ("POST".equals(method)) {
-            builder.post(body);
-        }
-        else {
+            builder.post(body != null ? body : RequestBody.create(new byte[0]));
+        } else {
             builder.get();
         }
 
         return builder.build();
     }
 
-    private String formatCookies(Map<String, String> cookies) {
-        StringBuilder sb = new StringBuilder();
-        cookies.forEach((k, v) -> sb.append(k).append('=').append(v).append("; "));
-        return sb.toString();
+    /* =========================
+     * RESPONSE BUILDING
+     * ========================= */
+
+    private Response buildResponse(
+            okhttp3.Response response,
+            String method,
+            String body
+    ) {
+        // Extract the last known location (URL) from all possible redirections.
+        // If no redirection then the location is the URL we provided
+        String location = extractLastLocationFromResponseChain(response);
+        if (location == null || location.isBlank()) {
+            location = response.request().url().toString();
+        }
+
+        // Simply keep one value
+        Map<String, String> headers = new HashMap<>();
+        for (String name : response.headers().names()) {
+            String value = response.header(name);
+            headers.put(name, value != null ? value : "");
+        }
+
+        return new InternetProvider.Response(
+                response.code(),
+                response.message(),
+                method,
+                location,
+                response.protocol().toString(),
+                body,
+                headers
+        );
     }
 
-    private Map<String, String> extractCookies(okhttp3.Response response) {
-        Map<String, String> cookies = new HashMap<>();
-        for (String header : response.headers("Set-Cookie")) {
-            String[] parts = header.split(";", 2);
-            String[] kv = parts[0].split("=", 2);
-            if (kv.length == 2) {
-                cookies.put(kv[0], kv[1]);
+    /* =========================
+     * HELPERS
+     * ========================= */
+
+    private static String extractLastLocationFromResponseChain(okhttp3.Response response) {
+        okhttp3.Response current = response;
+        while (current != null) {
+            String location = current.header("Location");
+            if (location != null && !location.isBlank()) {
+                return location;
             }
+            current = current.priorResponse();
         }
-        return cookies;
+        return null;
     }
 
-    private Map<String, String> toSingleValueMap(Headers headers) {
-        Map<String, String> map = new HashMap<>();
-        for (String name : headers.names()) {
-            map.put(name, headers.get(name));
-        }
-        return map;
-    }
-
-    private String extractFileName(String url) {
-        try {
-            return new File(new java.net.URI(url).getPath()).getName();
-        }
-        catch (Exception e) {
-            return "download.bin";
-        }
+    private String guessExtension(String contentType) {
+        if (contentType == null) return "bin";
+        if (contentType.contains("pdf")) return "pdf";
+        if (contentType.contains("json")) return "json";
+        if (contentType.contains("html")) return "html";
+        return "bin";
     }
 }
