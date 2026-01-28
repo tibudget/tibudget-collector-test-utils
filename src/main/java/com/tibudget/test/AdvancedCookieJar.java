@@ -3,7 +3,6 @@ package com.tibudget.test;
 import okhttp3.Cookie;
 import okhttp3.CookieJar;
 import okhttp3.HttpUrl;
-import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +24,7 @@ public class AdvancedCookieJar implements CookieJar {
     }
 
     @Override
-    public void saveFromResponse(@NonNull HttpUrl url, List<Cookie> newCookies) {
+    public void saveFromResponse(HttpUrl url, List<Cookie> newCookies) {
         synchronized (lock) {
             long now = System.currentTimeMillis();
 
@@ -43,7 +42,7 @@ public class AdvancedCookieJar implements CookieJar {
     }
 
     @Override
-    public @NonNull List<Cookie> loadForRequest(@NonNull HttpUrl url) {
+    public List<Cookie> loadForRequest(HttpUrl url) {
         synchronized (lock) {
             long now = System.currentTimeMillis();
 
