@@ -17,11 +17,16 @@ public class OkHttpInternetProvider implements InternetProvider {
 
     public OkHttpInternetProvider() {
         this.client = new OkHttpClient.Builder()
-                // A simple cookie jar is enough for this test
-                .cookieJar(new SimpleCookieJar())
+                // This AdvancedCookieJar is almost the same as in ti'bu app
+                .cookieJar(new AdvancedCookieJar())
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build();
+        this.downloadDir = new File("target/downloads/");
+    }
+
+    public OkHttpInternetProvider(OkHttpClient client) {
+        this.client = client;
         this.downloadDir = new File("target/downloads/");
     }
 
