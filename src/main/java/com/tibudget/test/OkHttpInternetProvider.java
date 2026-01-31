@@ -14,6 +14,7 @@ public class OkHttpInternetProvider implements InternetProvider {
 
     private final OkHttpClient client;
     private final File downloadDir;
+    private static final RateLimiter rateLimiter = new RateLimiter(2);
 
     public OkHttpInternetProvider() {
         this.client = new OkHttpClient.Builder()
@@ -22,12 +23,20 @@ public class OkHttpInternetProvider implements InternetProvider {
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build();
-        this.downloadDir = new File("target/downloads/");
+        this.downloadDir = initDownloadDir();
     }
 
     public OkHttpInternetProvider(OkHttpClient client) {
         this.client = client;
-        this.downloadDir = new File("target/downloads/");
+        this.downloadDir = initDownloadDir();
+    }
+
+    private static File initDownloadDir() {
+        File dir = new File("target/downloads/");
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw new IllegalStateException("Unable to create download directory: " + dir.getAbsolutePath());
+        }
+        return dir;
     }
 
     /* =========================
@@ -112,13 +121,11 @@ public class OkHttpInternetProvider implements InternetProvider {
      * ========================= */
 
     private Response execute(Request request, String method) throws IOException {
-
+        rateLimiter.acquire();
         try (okhttp3.Response response = client.newCall(request).execute()) {
-
             String body = response.body() != null
                     ? response.body().string()
                     : "";
-
             return buildResponse(response, method, body);
         }
     }
