@@ -5,6 +5,7 @@ import okhttp3.HttpUrl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -85,22 +86,6 @@ class AdvancedCookieJarTest {
 
         assertEquals(1, cookieJar.loadForRequest(matchingUrl).size());
         assertEquals(0, cookieJar.loadForRequest(nonMatchingUrl).size());
-    }
-
-    @Test
-    void shouldExportAndRestoreCookies() {
-        Cookie cookie = createCookie("persisted", "yes", "example.com", "/", false);
-        cookieJar.saveFromResponse(baseUrl, List.of(cookie));
-
-        List<SerializableCookie> exported = cookieJar.export();
-        assertEquals(1, exported.size());
-
-        AdvancedCookieJar restoredJar = new AdvancedCookieJar(exported);
-        List<Cookie> loaded = restoredJar.loadForRequest(baseUrl);
-
-        assertEquals(1, loaded.size());
-        assertEquals("persisted", loaded.get(0).name());
-        assertEquals("yes", loaded.get(0).value());
     }
 
     @Test

@@ -2,97 +2,69 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>com.tibudget</groupId>
+
+	<parent>
+		<groupId>com.tibudget</groupId>
+		<artifactId>collector-parent</artifactId>
+		<version>1.0.1</version>
+	</parent>
+
 	<artifactId>tibudget-collector-test-utils</artifactId>
 	<version>0.5-SNAPSHOT</version>
 	<packaging>jar</packaging>
 
-	<name>ti'bu collector test utils</name>
-	<description />
+	<name>ti'budget collectors tests utils</name>
+	<description>Usefull classes to test your collector</description>
 	<url>https://tibudget.com</url>
-	<organization><name>ti'bu</name></organization>
-
-	<!-- Specify hard-coded project properties here -->
-	<properties>
-		<!-- To make the build platform independent -->
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<maven.compiler.release>11</maven.compiler.release>
-		<mockito.version>5.21.0</mockito.version>
-		<junit.jupiter.version>5.14.2</junit.jupiter.version>
-
-		<!-- ti'bu API version -->
-		<tibudget.api.version>0.41</tibudget.api.version>
-	</properties>
+	<organization>
+		<name>ti'budget</name>
+		<url>https://tibudget.com</url>
+	</organization>
 
 	<scm>
 		<connection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</connection>
-		<tag>tibudget-collector-test-utils-0.3</tag>
+		<developerConnection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</developerConnection>
+		<url>https://github.com/tibudget/tibudget-collector-test-utils</url>
+		<tag>HEAD</tag>
 	</scm>
 
-	<distributionManagement>
-		<repository>
-			<id>tibudget-repository-release</id>
-			<name>tibudget Release Repository</name>
-			<url>s3://tibudget-maven-repository/release</url>
-		</repository>
-		<snapshotRepository>
-			<id>tibudget-repository-snapshot</id>
-			<name>tibudget Snapshot Repository</name>
-			<url>s3://tibudget-maven-repository/snapshot</url>
-		</snapshotRepository>
-	</distributionManagement>
+	<licenses>
+		<license>
+			<name>MIT License</name>
+			<url>https://opensource.org/licenses/MIT</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
 
 	<dependencies>
 
 		<dependency>
+			<groupId>com.tibudget</groupId>
+			<artifactId>tibudget-api</artifactId>
+			<scope>provided</scope>
+		</dependency>
+
+		<dependency>
 			<groupId>com.google.code.gson</groupId>
 			<artifactId>gson</artifactId>
-			<version>2.12.1</version>
 		</dependency>
 
 		<dependency>
 			<groupId>com.squareup.okhttp3</groupId>
 			<artifactId>okhttp</artifactId>
-			<version>4.12.0</version>
 		</dependency>
 
-		<!-- The ti'bu API (Provided by ti'bu app) -->
 		<dependency>
-			<groupId>com.tibudget</groupId>
-			<artifactId>tibudget-api</artifactId>
-			<version>${tibudget.api.version}</version>
-			<scope>provided</scope>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
 		</dependency>
 
 		<!-- JUnit 5 -->
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
 			<artifactId>junit-jupiter</artifactId>
-			<version>${junit.jupiter.version}</version>
 		</dependency>
 
 	</dependencies>
-
-	<build>
-		<extensions>
-			<extension>
-				<groupId>com.github.seahen</groupId>
-				<artifactId>maven-s3-wagon</artifactId>
-				<version>1.3.3</version>
-			</extension>
-		</extensions>
-		<plugins>
-			<!-- Java compiler version -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<version>3.13.0</version>
-				<configuration>
-					<release>${maven.compiler.release}</release>
-					<encoding>${project.build.sourceEncoding}</encoding>
-				</configuration>
-			</plugin>
-		</plugins>
-	</build>
 
 </project>

@@ -2,7 +2,15 @@ package com.tibudget.test;
 
 import okhttp3.Cookie;
 
-public class SerializableCookie {
+import java.io.Serializable;
+
+/**
+ * Serializable representation of OkHttp Cookie.
+ * This class allows persisting cookies to disk.
+ */
+public class SerializableCookie implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     public final String name;
     public final String value;
@@ -33,6 +41,9 @@ public class SerializableCookie {
         this.hostOnly = hostOnly;
     }
 
+    /**
+     * Create a SerializableCookie from OkHttp Cookie.
+     */
     public static SerializableCookie fromCookie(Cookie cookie) {
         return new SerializableCookie(
                 cookie.name(),
@@ -46,6 +57,9 @@ public class SerializableCookie {
         );
     }
 
+    /**
+     * Convert back to OkHttp Cookie.
+     */
     public Cookie toCookie() {
         Cookie.Builder builder = new Cookie.Builder()
                 .name(name)

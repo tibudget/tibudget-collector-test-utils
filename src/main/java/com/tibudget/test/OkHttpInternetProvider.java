@@ -9,34 +9,125 @@ import okhttp3.RequestBody;
 import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class OkHttpInternetProvider implements InternetProvider {
 
     private final OkHttpClient client;
     private final File downloadDir;
     private static final RateLimiter rateLimiter = new RateLimiter(2);
+    private final boolean recordTraffic;
+    private final File trafficDir;
+    private final AtomicInteger trafficIndex = new AtomicInteger(0);
 
-    public OkHttpInternetProvider() {
-        this.client = new OkHttpClient.Builder()
-                // This AdvancedCookieJar is almost the same as in ti'bu app
-                .cookieJar(new AdvancedCookieJar())
+    public OkHttpInternetProvider(
+            OkHttpClient client,
+            File downloadDir,
+            File cookiesFile,
+            boolean recordTraffic
+    ) {
+        this.recordTraffic = recordTraffic;
+
+        this.downloadDir = initDownloadDir(
+                downloadDir != null ? downloadDir : new File("target/downloads/")
+        );
+
+        this.trafficDir = recordTraffic
+                ? createSessionTrafficDir()
+                : null;
+
+        this.client = client != null
+                ? client
+                : new OkHttpClient.Builder()
+                .cookieJar(new AdvancedCookieJar(cookiesFile))
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build();
-        this.downloadDir = initDownloadDir();
+    }
+
+    public OkHttpInternetProvider() {
+        this(null, null, null, false);
+    }
+
+    public OkHttpInternetProvider(boolean recordTraffic) {
+        this(null, null, null, recordTraffic);
+    }
+
+    public OkHttpInternetProvider(File downloadDir, File cookiesFile) {
+        this(null, downloadDir, cookiesFile, false);
+    }
+
+    public OkHttpInternetProvider(File downloadDir, File cookiesFile, boolean recordTraffic) {
+        this(null, downloadDir, cookiesFile, recordTraffic);
     }
 
     public OkHttpInternetProvider(OkHttpClient client) {
-        this.client = client;
-        this.downloadDir = initDownloadDir();
+        this(client, null, null, false);
     }
 
-    private static File initDownloadDir() {
-        File dir = new File("target/downloads/");
+    private File createSessionTrafficDir() {
+        String sessionName = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy_MM_dd__HH_mm"));
+
+        File baseDir = initDownloadDir(new File("target/http-traffic/"));
+        File sessionDir = new File(baseDir, sessionName);
+
+        if (!sessionDir.exists() && !sessionDir.mkdirs()) {
+            throw new IllegalStateException("Unable to create traffic session directory");
+        }
+
+        return sessionDir;
+    }
+
+    private static File initDownloadDir(File dir) {
         if (!dir.exists() && !dir.mkdirs()) {
             throw new IllegalStateException("Unable to create download directory: " + dir.getAbsolutePath());
         }
         return dir;
+    }
+
+    private String formatIndex(int index) {
+        return String.format("%04d", index);
+    }
+
+    private void recordIfEnabled(String method, String url, String body) {
+
+        if (!recordTraffic || trafficDir == null) {
+            return;
+        }
+
+        try {
+            int index = trafficIndex.incrementAndGet();
+            String paddedIndex = formatIndex(index);
+
+            String normalizedUrl = normalizeUrl(url);
+
+            File out = new File(
+                    trafficDir,
+                    paddedIndex + "_" +
+                            method.toLowerCase() + "_" +
+                            normalizedUrl + ".html"
+            );
+
+            try (Writer writer = new OutputStreamWriter(
+                    new FileOutputStream(out),
+                    java.nio.charset.StandardCharsets.UTF_8
+            )) {
+                writer.write(body);
+            }
+
+        } catch (Exception ignored) {
+            // Never break HTTP flow if recording fails
+        }
+    }
+
+
+    private String normalizeUrl(String url) {
+        return url
+                .replace("https://", "")
+                .replace("http://", "")
+                .replaceAll("[^a-zA-Z0-9\\.\\-_/]", "_")
+                .replace("/", "_");
     }
 
     /* =========================
@@ -108,6 +199,8 @@ public class OkHttpInternetProvider implements InternetProvider {
                 in.transferTo(os);
             }
 
+            recordIfEnabled("dl", url, out.getAbsolutePath());
+
             return buildResponse(
                     response,
                     "GET",
@@ -126,6 +219,7 @@ public class OkHttpInternetProvider implements InternetProvider {
             String body = response.body() != null
                     ? response.body().string()
                     : "";
+            recordIfEnabled(method, request.url().toString(), body);
             return buildResponse(response, method, body);
         }
     }
