@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>com.tibudget</groupId>
 		<artifactId>collector-parent</artifactId>
-		<version>1.0.6</version>
+		<version>1.0.8</version>
 	</parent>
 
 	<artifactId>tibudget-collector-test-utils</artifactId>
@@ -16,10 +16,6 @@
 	<name>ti'budget collectors tests utils</name>
 	<description>Usefull classes to test your collector</description>
 	<url>https://tibudget.com</url>
-	<organization>
-		<name>ti'budget</name>
-		<url>https://tibudget.com</url>
-	</organization>
 
 	<scm>
 		<connection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</connection>
@@ -27,14 +23,6 @@
 		<url>https://github.com/tibudget/tibudget-collector-test-utils</url>
 		<tag>HEAD</tag>
 	</scm>
-
-	<licenses>
-		<license>
-			<name>MIT License</name>
-			<url>https://opensource.org/licenses/MIT</url>
-			<distribution>repo</distribution>
-		</license>
-	</licenses>
 
 	<dependencies>
 
