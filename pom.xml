@@ -10,7 +10,7 @@
 	</parent>
 
 	<artifactId>tibudget-collector-test-utils</artifactId>
-	<version>0.7-SNAPSHOT</version>
+	<version>0.7</version>
 	<packaging>jar</packaging>
 
 	<name>ti'budget collectors tests utils</name>
@@ -21,7 +21,7 @@
 		<connection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</connection>
 		<developerConnection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</developerConnection>
 		<url>https://github.com/tibudget/tibudget-collector-test-utils</url>
-		<tag>HEAD</tag>
+		<tag>tibudget-collector-test-utils-0.7</tag>
 	</scm>
 
 	<dependencies>
