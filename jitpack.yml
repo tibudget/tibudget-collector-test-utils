@@ -1,4 +1,10 @@
 jdk:
   - openjdk21
+
+before_install:
+  - chmod +x mvnw
+  - unset M2_HOME
+  - unset MAVEN_HOME
+
 install:
-  - mvn -B -ntp install
+  - ./mvnw -B -ntp install
