@@ -92,6 +92,18 @@
             </resource>
         </resources>
         <plugins>
+            <!-- Release plugin to make sure the release is performed the same way everytime -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-release-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <!-- Important for JitPack to work correctly -->
+                    <tagNameFormat>@{project.version}</tagNameFormat>
+                    <!-- Skip deploy as we use JitPack but still want the "release" process -->
+                    <arguments>-Dmaven.deploy.skip=true</arguments>
+                </configuration>
+            </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.16.0</version>
