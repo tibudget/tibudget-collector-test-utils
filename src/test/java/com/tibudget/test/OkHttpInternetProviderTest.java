@@ -12,7 +12,7 @@ public class OkHttpInternetProviderTest {
     @Test
     void get_shouldReturnHttp200AndBody() throws IOException {
 
-        InternetProvider internet = new OkHttpInternetProvider();
+        InternetProvider internet = new OkHttpInternetProvider().okHttpClient(new okhttp3.OkHttpClient());
 
         InternetProvider.Response response = internet.get(
                 "https://httpbin.org/get",
