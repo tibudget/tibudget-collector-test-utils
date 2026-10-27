@@ -186,6 +186,30 @@ class CollectorResultJsonTest {
         assertThrows(IllegalArgumentException.class, () -> CollectorResultJson.toJson(List.of(account, other), List.of(), List.of()));
     }
 
+    @Test
+    void accountAndRecurringPaymentWithTheSameIdUseDifferentStableUuids() {
+        AccountDto account = account();
+        account.setId("4");
+        RecurringPaymentDto recurring = recurring();
+        recurring.setId("4");
+        JsonObject json = JsonParser.parseString(CollectorResultJson.toJson(List.of(account), List.of(), List.of(recurring))).getAsJsonObject();
+        assertNotEquals(json.getAsJsonArray("accounts").get(0).getAsJsonObject().get("uuid"),
+                json.getAsJsonArray("recurringPayments").get(0).getAsJsonObject().get("uuid"));
+    }
+
+    @Test
+    void idsStayStableEvenWhenTheyMatchAnOldUuid() {
+        AccountDto account = account();
+        account.setId(account.getUuid());
+        JsonObject json = JsonParser.parseString(CollectorResultJson.toJson(List.of(account), List.of(), List.of())).getAsJsonObject();
+        JsonObject saved = json.getAsJsonArray("accounts").get(0).getAsJsonObject();
+        assertEquals(account.getId(), saved.get("id").getAsString());
+        String expected = saved.get("uuid").getAsString();
+        account.setUuid("new-random-uuid");
+        JsonObject again = JsonParser.parseString(CollectorResultJson.toJson(List.of(account), List.of(), List.of())).getAsJsonObject();
+        assertEquals(expected, again.getAsJsonArray("accounts").get(0).getAsJsonObject().get("uuid").getAsString());
+    }
+
     private AccountDto account() {
         AccountDto account = new AccountDto();
         account.setId("account-id");

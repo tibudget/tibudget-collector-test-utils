@@ -1,58 +1,137 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.tibudget</groupId>
+    <artifactId>tibudget-collector-test-utils</artifactId>
+    <version>0.8-SNAPSHOT</version>
+    <packaging>jar</packaging>
 
-	<modelVersion>4.0.0</modelVersion>
+    <name>Tibu Collector Test Utils</name>
+    <description>Record HTTP scenarios and test Tibu collectors offline.</description>
+    <url>https://github.com/tibudget/tibudget-collector-test-utils</url>
 
-	<parent>
-		<groupId>com.tibudget</groupId>
-		<artifactId>collector-parent</artifactId>
-		<version>1.0.8</version>
-	</parent>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
-	<artifactId>tibudget-collector-test-utils</artifactId>
-	<version>0.8-SNAPSHOT</version>
-	<packaging>jar</packaging>
+    <scm>
+        <connection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</connection>
+        <developerConnection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</developerConnection>
+        <url>https://github.com/tibudget/tibudget-collector-test-utils</url>
+        <tag>HEAD</tag>
+    </scm>
 
-	<name>ti'budget collectors tests utils</name>
-	<description>Usefull classes to test your collector</description>
-	<url>https://tibudget.com</url>
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <tibu.api.version>0.65</tibu.api.version>
+        <gson.version>2.14.0</gson.version>
+        <okhttp.version>4.12.0</okhttp.version>
+        <pdfbox.version>2.0.37</pdfbox.version>
+        <junit.version>5.13.4</junit.version>
+    </properties>
 
-	<scm>
-		<connection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</connection>
-		<developerConnection>scm:git:https://github.com/tibudget/tibudget-collector-test-utils.git</developerConnection>
-		<url>https://github.com/tibudget/tibudget-collector-test-utils</url>
-		<tag>HEAD</tag>
-	</scm>
+    <repositories>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+    </repositories>
 
-	<dependencies>
+    <dependencies>
+        <!-- The collector project supplies its API dependency. Do not bundle it in this library. -->
+        <dependency>
+            <groupId>com.github.tibudget</groupId>
+            <artifactId>tibudget-api</artifactId>
+            <version>${tibu.api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>${gson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+        <!-- Assertions are part of CollectorResultJson's public test API. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 
-		<dependency>
-			<groupId>com.tibudget</groupId>
-			<artifactId>tibudget-api</artifactId>
-			<scope>provided</scope>
-		</dependency>
-
-		<dependency>
-			<groupId>com.google.code.gson</groupId>
-			<artifactId>gson</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>com.squareup.okhttp3</groupId>
-			<artifactId>okhttp</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.pdfbox</groupId>
-			<artifactId>pdfbox</artifactId>
-		</dependency>
-
-		<!-- JUnit 5 -->
-		<dependency>
-			<groupId>org.junit.jupiter</groupId>
-			<artifactId>junit-jupiter</artifactId>
-		</dependency>
-
-	</dependencies>
-
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${project.basedir}</directory>
+                <targetPath>META-INF</targetPath>
+                <includes><include>LICENSE</include></includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.16.0</version>
+            </plugin>
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.6.0</version>
+            </plugin>
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.5.0</version>
+            </plugin>
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.5.1</version>
+            </plugin>
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.4.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals><goal>jar-no-fork</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.12.0</version>
+                <configuration>
+                    <doclint>all,-missing</doclint>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadoc</id>
+                        <goals><goal>jar</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>

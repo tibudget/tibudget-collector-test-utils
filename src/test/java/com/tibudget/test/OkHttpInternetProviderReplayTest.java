@@ -229,6 +229,19 @@ class OkHttpInternetProviderReplayTest {
     }
 
     @Test
+    void completionCheckRejectsShortenedScenarios() throws Exception {
+        Files.writeString(temp.resolve("0001_get_example.test_page.html"), "first response");
+        Files.writeString(temp.resolve("0002_get_example.test_page.html"), "second response");
+        OkHttpInternetProvider replay = new OkHttpInternetProvider().replayDir(temp.toFile());
+        assertThrows(IOException.class, replay::assertReplayComplete);
+        replay.get("https://example.test/page", null);
+        assertThrows(IOException.class, replay::assertReplayComplete);
+        replay.get("https://example.test/page", null);
+        assertDoesNotThrow(replay::assertReplayComplete);
+        assertThrows(IllegalStateException.class, new OkHttpInternetProvider()::assertReplayComplete);
+    }
+
+    @Test
     void rejectsDifferentIndexMethodOrUrl() throws Exception {
         Files.writeString(temp.resolve("0001_get_example.test_page.html"), "legacy body");
         assertEquals("legacy body", new OkHttpInternetProvider().okHttpClient(new OkHttpClient()).replayDir(temp.toFile())
@@ -241,6 +254,41 @@ class OkHttpInternetProviderReplayTest {
         replay.get("https://example.test/page", Map.of());
         IOException error = assertThrows(IOException.class, () -> replay.get("https://example.test/page", Map.of()));
         assertTrue(error.getMessage().contains("request 2"));
+    }
+
+    @Test
+    void rejectsWrongUrlsEvenWhenNormalizedFilenamesMatchAndRejectsUnsupportedHar() throws Exception {
+        String fixture = """
+                {"log":{"version":"1.2","entries":[{
+                  "request":{"method":"GET","url":"https://example.test/page?a=b"},
+                  "response":{"status":200,"statusText":"OK","httpVersion":"http/1.1","headers":[],
+                    "content":{"text":"body","mimeType":"text/plain"}}
+                }]}}
+                """;
+        Path recording = temp.resolve("0001_get_example.test_page_a_b.har");
+        Files.writeString(recording, fixture);
+        OkHttpInternetProvider replay = new OkHttpInternetProvider().replayDir(temp.toFile());
+        assertEquals("body", replay.get("https://example.test/page?a=b", Map.of()).body);
+        // These two URLs normalize to the same filename; only exact HAR matching rejects this one.
+        assertThrows(IOException.class, () -> new OkHttpInternetProvider().replayDir(temp.toFile())
+                .get("https://example.test/page?a_b", Map.of()));
+        com.google.gson.JsonObject har = com.google.gson.JsonParser.parseString(fixture).getAsJsonObject();
+        var log = har.getAsJsonObject("log");
+        log.addProperty("version", "1.1");
+        Files.writeString(recording, har.toString());
+        assertThrows(IOException.class, () -> new OkHttpInternetProvider().replayDir(temp.toFile())
+                .get("https://example.test/page?a=b", Map.of()));
+        log.addProperty("version", "1.2");
+        var entries = log.getAsJsonArray("entries");
+        entries.add(entries.get(0).deepCopy());
+        Files.writeString(recording, har.toString());
+        assertThrows(IOException.class, () -> new OkHttpInternetProvider().replayDir(temp.toFile())
+                .get("https://example.test/page?a=b", Map.of()));
+        entries.remove(1);
+        entries.get(0).getAsJsonObject().getAsJsonObject("response").getAsJsonObject("content").addProperty("encoding", "gzip");
+        Files.writeString(recording, har.toString());
+        assertThrows(IOException.class, () -> new OkHttpInternetProvider().replayDir(temp.toFile())
+                .get("https://example.test/page?a=b", Map.of()));
     }
 
     @Test

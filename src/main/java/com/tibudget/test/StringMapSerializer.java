@@ -1,14 +1,21 @@
 package com.tibudget.test;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.*;
 import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Collections;
 import java.util.Map;
 import java.util.logging.Logger;
 
+/**
+ * Stores local collector settings as UTF-8 JSON. Missing or unreadable files load as an empty map.
+ * Keep files containing login data outside committed test resources.
+ */
 public class StringMapSerializer {
 
     private static final Logger LOG = Logger.getLogger(StringMapSerializer.class.getName());
@@ -32,20 +39,25 @@ public class StringMapSerializer {
     }
 
     /**
-     * Saves the given Map<String, String> as a JSON file.
+     * Saves the given {@code Map<String, String>} as a JSON file.
      *
-     * @param cookies A map containing cookie key-value pairs.
+     * @param values settings to save
      */
-    public void save(Map<String, String> cookies) {
-        try (Writer writer = new FileWriter(file)) {
-            gson.toJson(cookies, writer);
+    public void save(Map<String, String> values) {
+        try {
+            Files.createDirectories(file.toPath().toAbsolutePath().getParent());
         } catch (IOException e) {
-            throw new RuntimeException("Failed to save cookies to " + file.getAbsolutePath(), e);
+            throw new IllegalStateException("Cannot create settings directory", e);
+        }
+        try (Writer writer = Files.newBufferedWriter(file.toPath(), StandardCharsets.UTF_8)) {
+            gson.toJson(values, writer);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to save settings to " + file.getAbsolutePath(), e);
         }
     }
 
     /**
-     * Loads values from the JSON file into a Map<String, String>.
+     * Loads values from the JSON file into a {@code Map<String, String>}.
      * If the file does not exist or an error occurs, it returns an empty map.
      *
      * @return A map containing the stored values, or an empty map if the file does not exist.
@@ -55,10 +67,11 @@ public class StringMapSerializer {
             return Collections.emptyMap();
         }
 
-        try (Reader reader = new FileReader(file)) {
+        try (Reader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
             Type type = new TypeToken<Map<String, String>>() {}.getType();
-            return gson.fromJson(reader, type);
-        } catch (IOException e) {
+            Map<String, String> values = gson.fromJson(reader, type);
+            return values == null ? Collections.emptyMap() : values;
+        } catch (IOException | JsonParseException e) {
             return Collections.emptyMap();
         }
     }

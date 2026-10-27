@@ -32,7 +32,7 @@ import java.util.TreeMap;
  * All DTO fields, null values and list ordering are preserved. Object keys are sorted and
  * dates use ISO-8601 UTC with millisecond precision, independently of the default locale/time zone.
  * Attached files are represented by their content (base64), rather than temporary paths.
- * Account and recurring-payment UUIDs are stabilized by ID by default, including their references.
+ * UUIDs are stabilized using {@link AccountDto#getId()} and {@link RecurringPaymentDto#getId()}, including their references.
  * Counterparty UUIDs are preserved. Callers must supply stable timestamps for repeatable comparisons.
  */
 public final class CollectorResultJson {
@@ -58,17 +58,24 @@ public final class CollectorResultJson {
     private CollectorResultJson() {
     }
 
-    /** Serializes current results with stable UUIDs, without modifying the collector. */
+    /**
+     * Serializes current results with stable UUIDs, without modifying the collector.
+     */
     public static String toJson(CollectorPlugin collector) {
         return toJson(collector, true);
     }
 
+    /**
+     * Uses current results from {@link CollectorPlugin}; pass false to keep the original UUIDs.
+     */
     public static String toJson(CollectorPlugin collector, boolean stabilizeUuids) {
         Objects.requireNonNull(collector, "collector");
         return toJson(collector.getAccounts(), collector.getTransactions(), collector.getRecurringPayments(), stabilizeUuids);
     }
 
-    /** Serializes gathered results, including nested DTOs, with stable UUIDs. */
+    /**
+     * Serializes gathered results, including nested DTOs, with stable UUIDs.
+     */
     public static String toJson(Collection<? extends AccountDto> accounts,
                                 Collection<? extends TransactionDto> transactions,
                                 Collection<? extends RecurringPaymentDto> recurringPayments) {
@@ -78,7 +85,7 @@ public final class CollectorResultJson {
     /**
      * With stabilization enabled, IDs must be nonblank. UUIDs are name-based UUIDs of
      * "account:" + id or "recurringPayment:" + id (UTF-8). Exact UUID string values and
-     * object keys are replaced throughout the JSON, except counterpartyUuid values.
+     * object keys are replaced throughout the JSON, except counterparty UUID values and stable entity IDs.
      */
     public static String toJson(Collection<? extends AccountDto> accounts,
                                 Collection<? extends TransactionDto> transactions,
@@ -144,7 +151,7 @@ public final class CollectorResultJson {
                 if (result.has(replacedKey)) {
                     throw new IllegalArgumentException("UUID replacement produces duplicate JSON key: " + replacedKey);
                 }
-                result.add(replacedKey, "counterpartyUuid".equalsIgnoreCase(key)
+                result.add(replacedKey, ("counterpartyUuid".equalsIgnoreCase(key) || "id".equals(key))
                         ? entry.getValue() : replaceUuids(entry.getValue(), replacements));
             });
             return result;
@@ -161,11 +168,16 @@ public final class CollectorResultJson {
         return element;
     }
 
-    /** Writes a UTF-8 reference file. Only call this when recording/updating a scenario. */
+    /**
+     * Writes a UTF-8 reference file. Only call this when recording/updating a scenario.
+     */
     public static void save(File file, CollectorPlugin collector) throws IOException {
         save(file, collector, true);
     }
 
+    /**
+     * Writes a reference using {@link #toJson(CollectorPlugin, boolean)}. The parent directory must exist.
+     */
     public static void save(File file, CollectorPlugin collector, boolean stabilizeUuids) throws IOException {
         Files.writeString(file.toPath(), toJson(collector, stabilizeUuids), StandardCharsets.UTF_8);
     }
@@ -179,6 +191,9 @@ public final class CollectorResultJson {
         assertMatches(expectedFile, collector, true);
     }
 
+    /**
+     * Compares with the same UUID option used to save the reference; never updates the file.
+     */
     public static void assertMatches(File expectedFile, CollectorPlugin collector, boolean stabilizeUuids) throws IOException {
         String expected = render(JsonParser.parseString(Files.readString(expectedFile.toPath(), StandardCharsets.UTF_8)));
         Assertions.assertEquals(expected, toJson(collector, stabilizeUuids),

@@ -4,6 +4,8 @@ import okhttp3.Cookie;
 import okhttp3.HttpUrl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
 
 import java.io.File;
 import java.util.List;
@@ -108,6 +110,16 @@ class AdvancedCookieJarTest {
 
         List<Cookie> loaded = cookieJar.loadForRequest(baseUrl);
         assertEquals(2, loaded.size());
+    }
+
+    @Test
+    void clearAlsoClearsTheSavedFile(@TempDir Path temp) {
+        File file = temp.resolve("cookies.bin").toFile();
+        AdvancedCookieJar persistent = new AdvancedCookieJar(file);
+        persistent.saveFromResponse(baseUrl, List.of(createCookie("session", "test", "example.com", "/", false)));
+        assertEquals(1, new AdvancedCookieJar(file).loadForRequest(baseUrl).size());
+        persistent.clear();
+        assertTrue(new AdvancedCookieJar(file).loadForRequest(baseUrl).isEmpty());
     }
 
     private Cookie createCookie(

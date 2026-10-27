@@ -1,96 +1,170 @@
-# tibudget-collector-utils
-Usefull classes to develop a ti'bu collector
+# Tibu Collector Test Utils
 
-## Enregistrer et rejouer un scénario HTTP
+Java tools for developing and testing [Tibu collectors](https://github.com/tibudget/tibudget-api).
+Record a real HTTP scenario once, replay it without a network connection, and compare
+accounts, transactions and recurring payments with a JSON reference.
 
-```java
-OkHttpClient client = new OkHttpClient.Builder().build();
-OkHttpInternetProvider recording = new OkHttpInternetProvider(client)
-        .htmlDir("target/debug-html")
-        .harDir("src/test/resources/scenario")
-        .downloadDir("target/downloads")
-        .rateLimiter(2) // Requêtes par seconde ; accepte aussi une instance de RateLimiter.
-        .cookiesFile("target/cookies.bin");
+This library runs in your development and test environment. Add it with Maven
+`test` scope so it is not included in the collector delivered to the application.
+It does not reproduce the application's sandbox or domain restrictions.
 
-InternetProvider replay = new OkHttpInternetProvider(client)
-        .replayDir(recording.getHarDir());
+## Requirements and installation
+
+Use **Java 21** and **Maven 3.9 or later**. The build uses the public
+`com.github.tibudget:tibudget-api:0.65` API with `provided` scope. Your collector
+must declare its own compatible API dependency; do not add two copies of the API
+under different Maven group IDs.
+
+For JitPack, add this repository and dependency to your collector's `pom.xml`:
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+
+<dependencies>
+    <dependency>
+        <groupId>com.github.tibudget</groupId>
+        <artifactId>tibudget-collector-test-utils</artifactId>
+        <version>GIT_TAG_OR_COMMIT</version>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>5.13.4</version>
+        <scope>test</scope>
+    </dependency>
+</dependencies>
 ```
 
-Le constructeur prend uniquement l'`OkHttpClient`. Sans répertoire HTML ou HAR,
-aucun trafic n'est enregistré. Les méthodes fluent acceptent `File` ou `String`
-et créent les répertoires de sortie si nécessaire ; `htmlDir((File) null)` et
-`harDir((File) null)` désactivent le format correspondant. Les fichiers des deux
-formats partagent le même index. Un sous-répertoire `yyyy-MM-dd_HH-mm-ss_SSS`
-est créé sous chaque base HTML/HAR. Si ce nom existe déjà, un suffixe `_1`, `_2`,
-etc. est ajouté jusqu'à trouver un nom libre. HTML et HAR réutilisent le même
-sous-répertoire lorsqu'ils ont la même base.
-`getHtmlDir()` et `getHarDir()` renvoient ces répertoires de session effectifs,
-à utiliser pour sauvegarder la référence JSON ou configurer le rejeu.
-Deux providers utilisent des sessions distinctes, même avec la même base.
-Configurez les chemins avant les appels HTTP.
+Replace `GIT_TAG_OR_COMMIT` with a tag or commit containing these changes.
+`0.8-SNAPSHOT` is the current source version, not a promise that a JitPack release
+already exists. To try a local build first, run `mvn install` here and use
+`com.tibudget:tibudget-collector-test-utils:0.8-SNAPSHOT` in your collector.
 
-`downloadDir` vaut `target/downloads` par défaut, créé au premier téléchargement.
-`cookiesFile` installe un `AdvancedCookieJar` persistant en conservant les autres
-options du client fourni. Sans cet appel, le cookie jar du client est conservé.
-`replayDir` doit désigner un répertoire existant et désactive les appels réseau.
-En rejeu, le rate limiter est ignoré pour GET, POST et les téléchargements.
+## Record and replay
 
-Le HTML contient le corps lisible de la réponse (le chemin local pour un téléchargement).
-
-Avec `harDir` défini, chaque échange est enregistré au format HAR 1.2 dans un fichier tel que
-`0001_get_example.com_page.har`. Le rejeu suit l'ordre des appels et vérifie
-la méthode et l'URL exacte (paramètres compris). Un appel différent ou supplémentaire,
-un fichier absent ou un HAR invalide provoque une `IOException`.
-Les corps POST et les en-têtes de requête sont enregistrés, mais ne sont pas
-comparés pendant le rejeu.
-
-Le statut, les en-têtes, le corps et la dernière localisation de la réponse sont
-restitués. La localisation utilise le champ d'extension HAR `_location`.
-Les téléchargements sont inclus en base64 et recréés localement au rejeu.
-Les anciens fichiers `.html` restent lisibles avec un statut 200 et sans en-têtes ;
-leurs téléchargements nécessitent que le fichier local d'origine existe encore.
-
-## Comparer le résultat d'une collecte
-
-`CollectorResultJson` sérialise les comptes, transactions et paiements récurrents
-actuellement exposés par un `CollectorPlugin`, sans lancer la collecte.
+Configure one provider per scenario, before the first request. Requests in a
+scenario must run in sequence. A custom `OkHttpClient` is optional.
 
 ```java
-File reference = new File("src/test/resources/scenario/collection.json");
+import com.tibudget.test.OkHttpInternetProvider;
 
-// Après la collecte réelle, lors de la création du scénario :
+var recording = new OkHttpInternetProvider()
+        .htmlDir("target/http-html")
+        .harDir("target/http-har")
+        .downloadDir("target/downloads")
+        .cookiesFile("target/local/cookies.bin")
+        .rateLimiter(2); // Requests per second.
+
+// Pass recording to your collector's init(...), then run collect().
+// The getter returns the actual dated session directory.
+var scenarioDirectory = recording.getHarDir();
+
+var replay = new OkHttpInternetProvider().replayDir(scenarioDirectory);
+// Initialize a fresh collector with replay, then run collect().
+replay.assertReplayComplete();
+```
+
+The second collect uses recorded responses, without network requests or rate
+limiting. `assertReplayComplete()` fails if recorded requests remain unused.
+See [the scenario guide](docs/scenarios.md) for the complete record/test workflow,
+initial settings, result checks and replay limits.
+
+| Configuration | Behavior |
+| --- | --- |
+| `htmlDir(File or String)` | Save readable response bodies for debugging. |
+| `harDir(File or String)` | Save one HAR 1.2 file per provider call, including downloads. |
+| `downloadDir(File or String)` | Set the download output directory; default: `target/downloads`. |
+| `cookiesFile(File or String)` | Install a persistent `AdvancedCookieJar`; create its parent directory. |
+| `replayDir(File or String)` | Read an existing session directory and skip all network calls. |
+| `rateLimiter(double or RateLimiter)` | Set requests per second, or share a limiter across providers; default: 2. |
+| `okHttpClient(OkHttpClient)` | Replace the client; set it before `cookiesFile`. A constructor also accepts a client. |
+
+Recording is disabled unless an HTML or HAR base directory is set.
+Each base gets a `yyyy-MM-dd_HH-mm-ss_SSS` session subdirectory. If that name
+exists, `_1`, `_2`, etc. is added. The same provider reuses its session when
+HTML and HAR have the same base. With different bases, suffixes are chosen
+independently. There is no UUID in directory names.
+
+`getHtmlDir()` and `getHarDir()` return the actual session directories.
+`getDownloadDir()`, `getCookiesFile()` and `getReplayDir()` return the configured
+paths. Unset optional paths are `null`. Passing `null` to `htmlDir` or `harDir`
+disables that format. Setting `replayDir` takes priority over recording.
+
+The default client follows redirects and keeps cookies in memory. A supplied
+client keeps its own options and cookie jar. `cookiesFile` replaces that jar on
+a copy of the client's configuration. Replacing the client later clears the
+provider's cookies-file setting.
+
+## Compare collect results
+
+```java
+import com.tibudget.test.CollectorResultJson;
+import java.io.File;
+
+File reference = new File(recording.getHarDir(), "collect-result.json");
+
+// After the real collect, when creating or updating the scenario:
 CollectorResultJson.save(reference, collector);
 
-// Après la collecte hors ligne, dans le test :
+// After the offline collect, in the automated test:
 CollectorResultJson.assertMatches(reference, offlineCollector);
+replay.assertReplayComplete();
 
-// Ou pour obtenir simplement le JSON :
+// Get JSON without writing a file, or keep the original UUIDs:
 String json = CollectorResultJson.toJson(collector);
-
-// Pour conserver les UUID d'origine :
 String rawJson = CollectorResultJson.toJson(collector, false);
-// Le même booléen est disponible sur save et assertMatches.
 ```
 
-Le JSON UTF-8 est indenté, ses clés sont triées (y compris dans les métadonnées)
-et ses dates sont en ISO-8601 UTC, avec conservation des millisecondes.
-Les champs des DTO et les valeurs nulles sont conservés, ainsi que l'ordre
-des listes. Par défaut, `toJson` stabilise les UUID des comptes et paiements récurrents
-avec `UUID.nameUUIDFromBytes` sur `account:<id>` et `recurringPayment:<id>` en UTF-8.
-Les références exactes à leurs anciens UUID sont remplacées partout dans le JSON,
-y compris dans les valeurs et clés des métadonnées, sans modifier les DTO d'origine.
-Les champs `counterpartyUuid` restent inchangés (quelle que soit leur casse).
-Les ID doivent être renseignés ; un ID absent ou un ancien UUID associé à des ID
-incompatibles déclenche une `IllegalArgumentException`.
-`save` et `assertMatches` utilisent cette même stabilisation par défaut.
- L'assertion ignore l'indentation et l'ordre des clés du fichier de
-référence ; une différence de données fait échouer le test avec les résultats
-attendu et obtenu. Elle ne crée ni ne remplace le fichier de référence.
+The reference contains `accounts`, `transactions` and `recurringPayments`, with
+nested DTOs, sorted object keys, UTC dates and explicit null values. List order
+is preserved. Attached files are included as base64 content, so temporary paths
+can change between runs. Reading a missing attachment fails serialization.
 
-Les pièces jointes sont sérialisées par leur contenu en base64 : les chemins
-temporaires de téléchargement peuvent donc changer au rejeu, mais le contenu
-doit être identique. Un fichier illisible fait échouer la sérialisation.
-Les ID, UUID des contreparties et dates de mise à jour doivent rester stables
-entre la collecte réelle et le rejeu. Les paramètres,
-identifiants de connexion et autres données de configuration du collector ne
-font pas partie du résultat sérialisé.
+By default, account UUIDs use `UUID.nameUUIDFromBytes` with UTF-8 `account:<id>`;
+recurring-payment UUIDs use `recurringPayment:<id>`. A shared ID such as `4`
+therefore produces different UUIDs for these two types. Exact references to the
+old UUIDs are replaced throughout the JSON, including metadata keys and values.
+Stable `id` fields and `counterpartyUuid` fields are preserved. DTOs are never
+modified. Missing/blank IDs or conflicting mappings for one old UUID fail with
+`IllegalArgumentException`. IDs must identify entities unambiguously within
+each result type, including recurring payments across accounts, when using this
+ID-only normalization.
+
+`save` and `assertMatches` use the same normalization; both also accept a final
+`boolean` to disable it. `assertMatches` ignores JSON whitespace and object key
+order, but reports different data as a JUnit assertion failure. It never creates
+or updates the reference. Settings, credentials and collector configuration are
+not included. Dates, counterparty UUIDs and all other business data still need
+to be repeatable; see [the scenario guide](docs/scenarios.md#make-the-test-repeatable).
+
+## Other tools
+
+| Class | Purpose |
+| --- | --- |
+| `AdvancedCookieJar` | In-memory cookies with optional local file persistence. `clear()` also saves the empty jar. |
+| `StringMapSerializer` | Save/load collector settings as UTF-8 JSON. Missing, unreadable or malformed files load as an empty map. |
+| `OTPProviderConsole` | Read an OTP interactively during manual development. Use a fixed provider in automated tests. |
+| `PDFToolsProviderPDFBox` | Extract text from PDFs with PDFBox; does not provide OCR for scanned images. |
+
+HAR, HTML, cookie files, result JSON and settings may contain personal data or
+login tokens. Use synthetic or redacted test data before committing a scenario.
+Cookie files use Java serialization: only load files you created and trust.
+
+## Build and contribute
+
+```sh
+mvn verify
+```
+
+The tests use synthetic data and do not require a bank account, credentials or a
+running HTTP service. Dependency downloads still need network access on a fresh
+machine. The build produces the library JAR, sources JAR and Javadoc JAR under
+`target/`. See [contributing and release instructions](CONTRIBUTING.md).
+
+Licensed under the [MIT License](LICENSE).

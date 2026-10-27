@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * Cookie jar for local tests, optionally saved to a trusted local file.
+ * The file uses Java serialization and must not come from an untrusted source.
+ */
 public class AdvancedCookieJar implements CookieJar {
 
     private static final Logger LOG = Logger.getLogger(AdvancedCookieJar.class.getName());
@@ -105,6 +109,7 @@ public class AdvancedCookieJar implements CookieJar {
     public void clear() {
         synchronized (lock) {
             cookies.clear();
+            save();
         }
     }
 

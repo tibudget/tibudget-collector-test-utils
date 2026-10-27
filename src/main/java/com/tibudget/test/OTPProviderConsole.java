@@ -4,6 +4,10 @@ import com.tibudget.api.OTPProvider;
 
 import java.util.Scanner;
 
+/**
+ * Reads an OTP from standard input during manual development.
+ * Use a fixed, non-interactive {@link OTPProvider} for automated offline tests.
+ */
 public class OTPProviderConsole implements OTPProvider {
 
     private final Scanner scanner;

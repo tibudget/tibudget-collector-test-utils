@@ -16,6 +16,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * HTTP provider for local collector development and repeatable offline tests.
+ * Configure one instance per scenario and make requests in sequence.
+ * This provider does not apply the application's domain restrictions.
+ */
 public class OkHttpInternetProvider implements InternetProvider {
 
     private OkHttpClient client;
@@ -30,64 +35,96 @@ public class OkHttpInternetProvider implements InternetProvider {
     private final Map<File, File> recordingDirectories = new HashMap<>();
     private final AtomicInteger trafficIndex = new AtomicInteger(0);
 
+    /**
+     * Creates a client with redirects and in-memory cookies enabled.
+     */
     public OkHttpInternetProvider() {
-        this.client =  new OkHttpClient.Builder()
+        this.client = new OkHttpClient.Builder()
+                .cookieJar(new AdvancedCookieJar())
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build();
     }
 
+    /**
+     * Uses the supplied {@link OkHttpClient}, including its cookie jar and redirect settings.
+     */
     public OkHttpInternetProvider(OkHttpClient okHttpClient) {
-        this.client = okHttpClient;
+        this.client = java.util.Objects.requireNonNull(okHttpClient, "okHttpClient");
     }
 
+    /**
+     * Replaces the client and clears the configured cookies-file path. Configure before requests.
+     */
     public OkHttpInternetProvider okHttpClient(OkHttpClient client) {
         this.client = java.util.Objects.requireNonNull(client, "client");
+        this.cookiesFile = null;
         return this;
     }
 
-    /** Sets this provider's rate limiter. The default allows two requests per second. */
+    /**
+     * Sets this provider's rate limiter. The default allows two requests per second.
+     */
     public OkHttpInternetProvider rateLimiter(RateLimiter rateLimiter) {
         this.rateLimiter = java.util.Objects.requireNonNull(rateLimiter, "rateLimiter");
         return this;
     }
 
-    /** Configures the maximum request rate in requests per second. */
+    /**
+     * Configures the maximum request rate in requests per second.
+     */
     public OkHttpInternetProvider rateLimiter(double requestsPerSecond) {
         return rateLimiter(new RateLimiter(requestsPerSecond));
     }
 
-    /** Records HTML in a dated session subdirectory of this directory. Null disables recording. Configure before requests. */
+    /**
+     * Records HTML in a dated session subdirectory of this directory. Null disables recording. Configure before requests.
+     */
     public OkHttpInternetProvider htmlDir(File directory) {
         this.htmlDir = directory == null ? null : createRecordingDirectory(directory);
         return this;
     }
 
+    /**
+     * String-path form of {@link #htmlDir(File)}.
+     */
     public OkHttpInternetProvider htmlDir(String directory) {
         return htmlDir(directory == null ? null : new File(directory));
     }
 
-    /** Records HAR in a dated session subdirectory of this directory. Null disables recording. Configure before requests. */
+    /**
+     * Records HAR in a dated session subdirectory of this directory. Null disables recording. Configure before requests.
+     */
     public OkHttpInternetProvider harDir(File directory) {
         this.harDir = directory == null ? null : createRecordingDirectory(directory);
         return this;
     }
 
+    /**
+     * String-path form of {@link #harDir(File)}.
+     */
     public OkHttpInternetProvider harDir(String directory) {
         return harDir(directory == null ? null : new File(directory));
     }
 
-    /** Sets the download directory, creating it if needed. Defaults to target/downloads. */
+    /**
+     * Sets the download directory, creating it if needed. Defaults to target/downloads.
+     */
     public OkHttpInternetProvider downloadDir(File directory) {
         this.downloadDir = initDownloadDir(java.util.Objects.requireNonNull(directory, "downloadDir"));
         return this;
     }
 
+    /**
+     * String-path form of {@link #downloadDir(File)}.
+     */
     public OkHttpInternetProvider downloadDir(String directory) {
         return downloadDir(new File(java.util.Objects.requireNonNull(directory, "downloadDir")));
     }
 
-    /** Installs a persistent cookie jar on a copy of the supplied client's configuration. */
+    /**
+     * Installs a persistent {@link AdvancedCookieJar} on a copy of the supplied client's configuration.
+     */
     public OkHttpInternetProvider cookiesFile(File file) {
         java.util.Objects.requireNonNull(file, "cookiesFile");
         if (file.isDirectory()) {
@@ -99,11 +136,16 @@ public class OkHttpInternetProvider implements InternetProvider {
         return this;
     }
 
+    /**
+     * String-path form of {@link #cookiesFile(File)}.
+     */
     public OkHttpInternetProvider cookiesFile(String file) {
         return cookiesFile(new File(java.util.Objects.requireNonNull(file, "cookiesFile")));
     }
 
-    /** Replays an existing scenario without network requests. Configure before requests. */
+    /**
+     * Replays an existing scenario without network requests. Configure before requests.
+     */
     public OkHttpInternetProvider replayDir(File directory) {
         if (directory == null || !directory.isDirectory()) {
             throw new IllegalArgumentException("Replay directory does not exist: " + directory);
@@ -112,33 +154,66 @@ public class OkHttpInternetProvider implements InternetProvider {
         return this;
     }
 
+    /**
+     * String-path form of {@link #replayDir(File)}.
+     */
     public OkHttpInternetProvider replayDir(String directory) {
         return replayDir(new File(java.util.Objects.requireNonNull(directory, "replayDir")));
     }
 
-    /** Returns the actual dated HTML session directory, or null if disabled. */
+    /**
+     * Returns the actual dated HTML session directory, or null if disabled.
+     */
     public File getHtmlDir() {
         return htmlDir;
     }
 
-    /** Returns the actual dated HAR session directory, or null if disabled. */
+    /**
+     * Returns the actual dated HAR session directory, or null if disabled.
+     */
     public File getHarDir() {
         return harDir;
     }
 
-    /** Returns the configured download directory (target/downloads by default). */
+    /**
+     * Returns the configured download directory (target/downloads by default).
+     */
     public File getDownloadDir() {
         return downloadDir;
     }
 
-    /** Returns the replay directory, or null if replay is disabled. */
+    /**
+     * Returns the replay directory, or null if replay is disabled.
+     */
     public File getReplayDir() {
         return replayDir;
     }
 
-    /** Returns the cookies file configured on this provider, or null if none was configured. */
+    /**
+     * Returns the cookies file configured on this provider, or null if none was configured.
+     */
     public File getCookiesFile() {
         return cookiesFile;
+    }
+
+    /**
+     * Fails if recorded requests remain after the test. Call after {@link com.tibudget.api.CollectorPlugin#collect()}.
+     * Only available when {@link #replayDir(File)} is configured.
+     *
+     * @throws IOException if a recording remains or the replay directory cannot be read
+     */
+    public void assertReplayComplete() throws IOException {
+        if (replayDir == null) {
+            throw new IllegalStateException("Replay directory is not configured");
+        }
+        try (java.util.stream.Stream<java.nio.file.Path> files = Files.list(replayDir.toPath())) {
+            for (java.nio.file.Path file : files.toList()) {
+                java.util.regex.Matcher name = java.util.regex.Pattern.compile("^(\\d+)_(get|post|dl)_.+\\.(har|html)$").matcher(file.getFileName().toString());
+                if (name.matches() && Long.parseLong(name.group(1)) > trafficIndex.get()) {
+                    throw new IOException("Scenario replay is incomplete: request " + name.group(1) + " was not replayed");
+                }
+            }
+        }
     }
 
     private synchronized File createRecordingDirectory(File baseDirectory) {
@@ -180,10 +255,16 @@ public class OkHttpInternetProvider implements InternetProvider {
     }
 
     private String trafficFileName(int index, String method, String url) {
-        return formatIndex(index) + "_" + method.toLowerCase(Locale.ROOT) + "_" + normalizeUrl(url) + ".html";
+        String normalizedUrl = normalizeUrl(url);
+        if (normalizedUrl.length() > 160) {
+            // Keep long query strings below the usual filesystem filename limit.
+            String hash = java.util.UUID.nameUUIDFromBytes(url.getBytes(StandardCharsets.UTF_8)).toString();
+            normalizedUrl = normalizedUrl.substring(0, 120) + "_" + hash;
+        }
+        return formatIndex(index) + "_" + method.toLowerCase(Locale.ROOT) + "_" + normalizedUrl + ".html";
     }
 
-    private void recordIfEnabled(String method, Request original, Response response, File download) {
+    private void recordIfEnabled(String method, Request original, Response response, File download) throws IOException {
         if (htmlDir == null && harDir == null) {
             return;
         }
@@ -192,8 +273,8 @@ public class OkHttpInternetProvider implements InternetProvider {
         if (htmlDir != null) {
             try {
                 Files.writeString(new File(htmlDir, fileName).toPath(), response.body, StandardCharsets.UTF_8);
-            } catch (IOException ignored) {
-                // Never break HTTP flow if HTML recording fails
+            } catch (IOException e) {
+                throw new IOException("Unable to record HTML response at request " + trafficIndex.get(), e);
             }
         }
         if (harDir == null) {
@@ -288,8 +369,8 @@ public class OkHttpInternetProvider implements InternetProvider {
             JsonObject har = new JsonObject();
             har.add("log", log);
             Files.writeString(out.toPath(), new GsonBuilder().setPrettyPrinting().create().toJson(har));
-        } catch (Exception ignored) {
-            // Never break HTTP flow if recording fails
+        } catch (IOException | RuntimeException e) {
+            throw new IOException("Unable to record HAR response at request " + trafficIndex.get(), e);
         }
     }
 
@@ -310,8 +391,12 @@ public class OkHttpInternetProvider implements InternetProvider {
                     + "): expected recording " + file.getAbsolutePath());
         }
         try {
-            JsonObject entry = JsonParser.parseString(Files.readString(file.toPath()))
-                    .getAsJsonObject().getAsJsonObject("log").getAsJsonArray("entries").get(0).getAsJsonObject();
+            JsonObject log = JsonParser.parseString(Files.readString(file.toPath())).getAsJsonObject().getAsJsonObject("log");
+            JsonArray entries = log.getAsJsonArray("entries");
+            if (!"1.2".equals(log.get("version").getAsString()) || entries.size() != 1) {
+                throw new IOException("Expected HAR 1.2 with exactly one entry: " + file);
+            }
+            JsonObject entry = entries.get(0).getAsJsonObject();
             JsonObject request = entry.getAsJsonObject("request");
             String httpMethod = "dl".equals(method) ? "GET" : method;
             if (!url.equals(request.get("url").getAsString())
@@ -326,6 +411,9 @@ public class OkHttpInternetProvider implements InternetProvider {
             }
             JsonObject content = response.getAsJsonObject("content");
             String text = content.has("text") ? content.get("text").getAsString() : "";
+            if (content.has("encoding") && !"base64".equals(content.get("encoding").getAsString())) {
+                throw new IOException("Unsupported HAR content encoding: " + file);
+            }
             byte[] bytes = content.has("encoding") && "base64".equals(content.get("encoding").getAsString())
                     ? Base64.getDecoder().decode(text) : text.getBytes(StandardCharsets.UTF_8);
             String body;
@@ -383,7 +471,7 @@ public class OkHttpInternetProvider implements InternetProvider {
                 MediaType.parse(contentType)
         );
 
-        Map<String, String> hdrs = new HashMap<>(headers);
+        Map<String, String> hdrs = headers == null ? new HashMap<>() : new HashMap<>(headers);
         hdrs.put("Content-Type", contentType);
 
         Request request = buildRequest("POST", url, requestBody, hdrs);
@@ -407,6 +495,7 @@ public class OkHttpInternetProvider implements InternetProvider {
             return replay("dl", request.url().toString(), forceContentType);
         }
 
+        rateLimiter.acquire();
         try (okhttp3.Response response = client.newCall(request).execute()) {
 
             if (!response.isSuccessful()) {
@@ -464,8 +553,9 @@ public class OkHttpInternetProvider implements InternetProvider {
 
         Request.Builder builder = new Request.Builder().url(url);
 
-        // Headers (filter Accept-Encoding)
-        for (Map.Entry<String, String> e : headers.entrySet()) {
+        // Let OkHttp manage compression and exclude response-only cookie headers.
+        Map<String, String> requestHeaders = headers == null ? Map.of() : headers;
+        for (Map.Entry<String, String> e : requestHeaders.entrySet()) {
             if (!e.getKey().equalsIgnoreCase("Accept-Encoding")
                     && !e.getKey().equalsIgnoreCase("Set-Cookie")) {
                 builder.addHeader(e.getKey(), e.getValue());

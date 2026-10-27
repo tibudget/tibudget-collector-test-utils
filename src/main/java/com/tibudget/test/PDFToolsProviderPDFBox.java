@@ -7,6 +7,9 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Extracts PDF text with PDFBox. Image-only documents require a separate OCR tool.
+ */
 public class PDFToolsProviderPDFBox implements PDFToolsProvider {
     @Override
     public String extractText(File file) throws IOException {

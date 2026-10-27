@@ -1,5 +1,9 @@
 package com.tibudget.test;
 
+/**
+ * Spaces requests on one provider, or on several providers sharing the same instance.
+ * The first request can run immediately. Replay does not use this limiter.
+ */
 public final class RateLimiter {
 
     private final long intervalNanos;
@@ -10,8 +14,8 @@ public final class RateLimiter {
      * @param requestsPerSecond example: 0.5 = one request every 2 seconds
      */
     public RateLimiter(double requestsPerSecond) {
-        if (requestsPerSecond <= 0) {
-            throw new IllegalArgumentException("requestsPerSecond must be > 0");
+        if (!Double.isFinite(requestsPerSecond) || requestsPerSecond <= 0) {
+            throw new IllegalArgumentException("requestsPerSecond must be finite and > 0");
         }
         this.intervalNanos = (long) (1_000_000_000d / requestsPerSecond);
     }
