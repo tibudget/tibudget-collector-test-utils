@@ -82,6 +82,7 @@ initial settings, result checks and replay limits.
 | `downloadDir(File or String)` | Set the download output directory; default: `target/downloads`. |
 | `cookiesFile(File or String)` | Install a persistent `AdvancedCookieJar`; create its parent directory. |
 | `replayDir(File or String)` | Read an existing session directory and skip all network calls. |
+| `stopAfterRequest(int, Runnable)` | During replay, call `collector::stop` after the selected successful response (numbered from one). |
 | `rateLimiter(double or RateLimiter)` | Set requests per second, or share a limiter across providers; default: 2. |
 | `okHttpClient(OkHttpClient)` | Replace the client; set it before `cookiesFile`. A constructor also accepts a client. |
 
@@ -179,3 +180,5 @@ require a newer Maven than the default JitPack image provides.
 Run the same build locally with `./mvnw -B -ntp install`.
 After publishing build changes, use a new tag containing them; an existing tag
 still points to its original build configuration.
+
+For a recording interrupted after request 45, configure `replay.stopAfterRequest(45, collector::stop)` before running the collect. Check that `collect()` returns `false`, then compare the saved partial result and call `assertReplayComplete()`. The selected response is returned normally; this requests a graceful stop rather than throwing a network error.

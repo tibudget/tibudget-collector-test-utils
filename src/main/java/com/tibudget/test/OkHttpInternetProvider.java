@@ -27,6 +27,8 @@ public class OkHttpInternetProvider implements InternetProvider {
     private File downloadDir = new File("target/downloads/");
     private RateLimiter rateLimiter = new RateLimiter(2);
     private File replayDir;
+    private int stopAfterRequest;
+    private Runnable stopAction;
     private File htmlDir;
     private File harDir;
     private File cookiesFile;
@@ -159,6 +161,21 @@ public class OkHttpInternetProvider implements InternetProvider {
      */
     public OkHttpInternetProvider replayDir(String directory) {
         return replayDir(new File(java.util.Objects.requireNonNull(directory, "replayDir")));
+    }
+
+    /**
+     * Calls the stop action after successfully reading the given replay response, numbered from one.
+     * Example: {@code stopAfterRequest(45, collector::stop)}. Configure before requests.
+     * Only applies to replay. The response is returned normally so the collector can save its progress.
+     * Later requests remain available if needed to finish the collector's first transaction.
+     */
+    public OkHttpInternetProvider stopAfterRequest(int requestNumber, Runnable stopAction) {
+        if (requestNumber < 1) {
+            throw new IllegalArgumentException("Stop request number must be at least 1");
+        }
+        this.stopAction = java.util.Objects.requireNonNull(stopAction, "stopAction");
+        this.stopAfterRequest = requestNumber;
+        return this;
     }
 
     /**
@@ -375,6 +392,14 @@ public class OkHttpInternetProvider implements InternetProvider {
     }
 
     private Response replay(String method, String url, String forceContentType) throws IOException {
+        Response response = readReplay(method, url, forceContentType);
+        if (trafficIndex.get() == stopAfterRequest && stopAction != null) {
+            stopAction.run();
+        }
+        return response;
+    }
+
+    private Response readReplay(String method, String url, String forceContentType) throws IOException {
         int index = trafficIndex.incrementAndGet();
         File legacy = new File(replayDir, trafficFileName(index, method, url));
         File file = new File(replayDir, legacy.getName().replaceFirst("\\.html$", ".har"));

@@ -17,6 +17,37 @@ class OkHttpInternetProviderReplayTest {
     @TempDir Path temp;
 
     @Test
+    void requestsStopAfterTheSelectedReplayResponse() throws Exception {
+        Files.writeString(temp.resolve("0001_get_example.test_first.html"), "first");
+        Files.writeString(temp.resolve("0002_post_example.test_second.html"), "second");
+        Path download = temp.resolve("download.txt");
+        Files.writeString(download, "file");
+        Files.writeString(temp.resolve("0003_dl_example.test_file.html"), download.toString());
+        java.util.concurrent.atomic.AtomicInteger stops = new java.util.concurrent.atomic.AtomicInteger();
+        OkHttpInternetProvider provider = new OkHttpInternetProvider().replayDir(temp.toFile());
+        assertSame(provider, provider.stopAfterRequest(2, stops::incrementAndGet));
+
+        assertEquals("first", provider.get("https://example.test/first", Map.of()).body);
+        assertEquals(0, stops.get());
+        assertEquals("second", provider.post("https://example.test/second", "", "text/plain", Map.of()).body);
+        assertEquals(1, stops.get());
+        provider.downloadFile("https://example.test/file", Map.of(), null);
+        assertEquals(1, stops.get());
+        provider.assertReplayComplete();
+    }
+
+    @Test
+    void doesNotRequestStopWhenReplayFails() {
+        java.util.concurrent.atomic.AtomicInteger stops = new java.util.concurrent.atomic.AtomicInteger();
+        OkHttpInternetProvider provider = new OkHttpInternetProvider().replayDir(temp.toFile()).stopAfterRequest(1, stops::incrementAndGet);
+
+        assertThrows(IOException.class, () -> provider.get("https://example.test/missing", Map.of()));
+        assertEquals(0, stops.get());
+        assertThrows(IllegalArgumentException.class, () -> provider.stopAfterRequest(0, () -> {}));
+        assertThrows(NullPointerException.class, () -> provider.stopAfterRequest(1, null));
+    }
+
+    @Test
     void recordsAndReplaysResponsesAndBinaryDownloadsWithoutNetwork() throws Exception {
         byte[] binary = {0, 1, (byte) 255, 42};
         OkHttpClient client = new OkHttpClient.Builder().addInterceptor(chain ->
