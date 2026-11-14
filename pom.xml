@@ -29,8 +29,10 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <tibu.api.version>0.65</tibu.api.version>
+        <tibu.api.version>0.66</tibu.api.version>
+        <javafx.version>21.0.11</javafx.version>
         <gson.version>2.14.0</gson.version>
+        <jsoup.version>1.23.2</jsoup.version>
         <okhttp.version>4.12.0</okhttp.version>
         <pdfbox.version>2.0.37</pdfbox.version>
         <junit.version>5.13.4</junit.version>
@@ -51,6 +53,12 @@
             <version>${tibu.api.version}</version>
             <scope>provided</scope>
         </dependency>
+        <!-- Desktop simulator only; JavaFX is excluded from collector and Android archives. -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
@@ -61,6 +69,12 @@
             <artifactId>okhttp</artifactId>
             <version>${okhttp.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>

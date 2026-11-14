@@ -121,10 +121,10 @@ class CollectorResultJsonTest {
     @Test
     void stabilizesUuidsAndAllReferencesWithoutChangingCounterpartiesOrCollector() throws Exception {
         AccountDto account = account();
-        account.setCounterPartyUuid("account-uuid");
+        account.setCounterpartyUuid("account-uuid");
         account.setMetadata("nested-reference", "subscription-uuid");
         TransactionDto transaction = transaction();
-        transaction.setCounterPartyUuid("subscription-uuid");
+        transaction.setCounterpartyUuid("subscription-uuid");
         transaction.setMetadata("account-uuid", "subscription-uuid");
         RecurringPaymentDto recurring = recurring();
         CollectorPlugin collector = collector(List.of(account), List.of(transaction), List.of(recurring));
@@ -162,7 +162,7 @@ class CollectorResultJsonTest {
         TransactionDto offline = transaction();
         offline.setAccountUuid(account.getUuid());
         offline.setRecurrentPaymentUuid(recurring.getUuid());
-        offline.setCounterPartyUuid("subscription-uuid");
+        offline.setCounterpartyUuid("subscription-uuid");
         offline.setMetadata(account.getUuid(), recurring.getUuid());
         CollectorPlugin replay = collector(List.of(account), List.of(offline), List.of(recurring));
         assertEquals(first, CollectorResultJson.toJson(replay));
