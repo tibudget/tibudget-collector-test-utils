@@ -143,8 +143,8 @@ class CollectorResultJsonTest {
         assertEquals(stableAccount, savedTransaction.get("accountUuid").getAsString());
         assertEquals(stableRecurring, savedTransaction.get("recurrentPaymentUuid").getAsString());
         assertEquals(stableRecurring, savedTransaction.getAsJsonObject("metadatas").get(stableAccount).getAsString());
-        assertEquals("account-uuid", savedAccount.get("counterPartyUuid").getAsString());
-        assertEquals("subscription-uuid", savedTransaction.get("counterPartyUuid").getAsString());
+        assertEquals("account-uuid", savedAccount.get("counterpartyUuid").getAsString());
+        assertEquals("subscription-uuid", savedTransaction.get("counterpartyUuid").getAsString());
         assertEquals("account-uuid", account.getUuid());
         assertEquals("subscription-uuid", recurring.getUuid());
         assertEquals("account-uuid", transaction.getAccountUuid());
