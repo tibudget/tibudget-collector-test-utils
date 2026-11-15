@@ -32,8 +32,7 @@ public class OkHttpInternetProvider implements InternetProvider {
     private File htmlDir;
     private File harDir;
     private File cookiesFile;
-    private final String recordingSession = java.time.LocalDateTime.now()
-            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss_SSS"));
+    private final String recordingSession = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss_SSS"));
     private final Map<File, File> recordingDirectories = new HashMap<>();
     private final AtomicInteger trafficIndex = new AtomicInteger(0);
 

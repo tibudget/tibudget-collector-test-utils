@@ -182,3 +182,34 @@ After publishing build changes, use a new tag containing them; an existing tag
 still points to its original build configuration.
 
 For a recording interrupted after request 45, configure `replay.stopAfterRequest(45, collector::stop)` before running the collect. Check that `collect()` returns `false`, then compare the saved partial result and call `assertReplayComplete()`. The selected response is returned normally; this requests a graceful stop rather than throwing a network error.
+
+## Desktop simulator
+
+Run `mvn test-compile exec:exec@simulate` from a collector with the simulator launch
+configured. **Run** resumes the local session; **Run from scratch** resets cookies
+and collect state. **Run & Record** resumes the session and records HAR files in
+`target/com/tibudget/test/<collector-class>/scenarios/<dated-scenario>/`.
+The red status and blinking indicator show when recording is active. After completion, a pause, a stop or an
+error, a highlighted banner below the controls shows the scenario name and opens its folder.
+Recording only includes requests made during that run; a resumed session can
+start after login. HAR files can contain credentials and personal data and are
+not encrypted or redacted. Keep them local or redact them before sharing.
+
+The **À propos** button explains the controls, local storage paths, recording,
+input encryption and inspector limits. It stays available during a collect.
+
+Validated input settings, including login and password, are saved automatically
+under `~/.config/tibudget/simulator/`, separately for each collector class. They
+are restored and validated at startup, without another login form. Values use
+AES-256-GCM with a new random nonce on every save and a local `settings.key`.
+The dedicated directory is restricted to its owner (`700`); keys and encrypted
+files use `600`. Storage requires POSIX permissions; if encryption, permissions
+or decryption fails, the simulator reports it and lets you enter inputs again.
+Settings remain available in memory when saving fails.
+
+The key is outside the repository and survives `mvn clean`. It protects against
+accidentally sharing project files, but a process with access to your OS account
+can also read the key. This does not encrypt existing cookies, collect state or
+HAR files. Delete the collector's `.enc` file to forget its saved inputs; deleting
+`settings.key` makes every saved input file unreadable. Run from scratch keeps
+saved input settings.

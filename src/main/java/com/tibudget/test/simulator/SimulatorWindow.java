@@ -20,6 +20,8 @@ import javafx.scene.*;
 import javafx.scene.control.*;
 import javafx.scene.image.*;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.stage.*;
 import javafx.util.Duration;
 import okhttp3.OkHttpClient;
@@ -68,11 +70,16 @@ public final class SimulatorWindow extends Application {
     private final Label transactionCount = new Label("0");
     private final Label recurringCount = new Label("0");
     private final Label requestCount = new Label("0");
-    private final Label footer = new Label("Local workspace · input values stay in memory");
     private final ProgressBar progress = new ProgressBar(0);
     private final Button run = new Button("▶  Run");
+    private final Circle recordIcon = new Circle(5, Color.web("#df3348"));
+    private final Button record = new Button("Run & Record", recordIcon);
+    private final Hyperlink scenarioLink = new Hyperlink();
+    private FadeTransition recordingAnimation;
+    private SimulatorSettings savedSettings;
     private final Button scratch = new Button("Run from scratch");
     private final Button stopButton = new Button("■  Stop");
+    private final Button aboutButton = new Button("À propos");
     private final Button settingsButton = new Button("⚙  Settings");
     private final CheckBox followLogs = new CheckBox("Follow");
     private final Map<String, String> counterparties = new HashMap<>();
@@ -105,19 +112,39 @@ public final class SimulatorWindow extends Application {
         window = stage;
         stage.setTitle("Tibu · Collector Simulator");
         try {
+            startupLog("INFO", "Starting simulator: Java " + System.getProperty("java.version") + ", JavaFX " + System.getProperty("javafx.runtime.version"));
+            startupLog("INFO", "Simulator classes loaded from " + getClass().getProtectionDomain().getCodeSource().getLocation());
+            startupLog("INFO", "Discovering CollectorPlugin providers.");
             List<ServiceLoader.Provider<CollectorPlugin>> providers = ServiceLoader.load(CollectorPlugin.class).stream().toList();
+            startupLog("INFO", "CollectorPlugin providers found: " + providers.size());
             if (providers.size() != 1) throw new IllegalStateException("Expected exactly one CollectorPlugin in META-INF/services; found " + providers.size());
+            startupLog("INFO", "Creating collector " + providers.getFirst().type().getName());
             factory = providers.getFirst()::get;
             CollectorPlugin collector = factory.get();
             try {
                 messages = ResourceBundle.getBundle("messages", Locale.getDefault(), collector.getClass().getClassLoader());
             } catch (MissingResourceException ignored) {
+                startupLog("WARN", "No collector messages bundle for locale " + Locale.getDefault());
                 // A collector without translations can still be inspected using its class name and input names.
             }
             directory = Path.of("target", "com/tibudget/test", collector.getClass().getName());
+            startupLog("INFO", "Reading collector inputs.");
             inputForm = new SimulatorInputs(factory, messages);
+            try {
+                savedSettings = new SimulatorSettings(Path.of(System.getProperty("user.home"), ".config", "tibudget", "simulator"), collector.getClass().getName());
+                var saved = savedSettings.load();
+                if (!saved.isEmpty()) {
+                    inputValues = inputForm.restore(saved, redactor);
+                    inputForm.protect(inputValues, redactor);
+                    configured = true;
+                    startupLog("INFO", "Encrypted collector inputs restored.");
+                }
+            } catch (Exception failure) {
+                startupLog("WARN", "Saved inputs could not be restored; open Settings to enter them again (" + failure.getClass().getSimpleName() + ").");
+            }
             openId = collector.getOpenIdJSONConfiguration() != null;
             installLogging();
+            startupLog("INFO", "Building simulator window; OpenID configured: " + openId);
             BorderPane root = new BorderPane();
             root.getStyleClass().add("workspace");
             root.setTop(header(collector));
@@ -131,10 +158,18 @@ public final class SimulatorWindow extends Application {
             workspaceScroll.setFitToWidth(true);
             workspaceScroll.setFitToHeight(true);
             root.setCenter(workspaceScroll);
-            footer.getStyleClass().add("footer");
-            root.setBottom(footer);
+            scenarioLink.setId("scenarioLink");
+            scenarioLink.setVisible(false);
+            scenarioLink.setManaged(false);
+            recordingAnimation = new FadeTransition(Duration.millis(550), recordIcon);
+            recordingAnimation.setFromValue(1);
+            recordingAnimation.setToValue(.15);
+            recordingAnimation.setAutoReverse(true);
+            recordingAnimation.setCycleCount(Animation.INDEFINITE);
             Scene scene = new Scene(root, 1440, 960);
-            scene.getStylesheets().add(Objects.requireNonNull(getClass().getResource("simulator.css")).toExternalForm());
+            var stylesheet = Objects.requireNonNull(getClass().getResource("simulator.css"), "Missing simulator stylesheet: /com/tibudget/test/simulator/simulator.css");
+            startupLog("INFO", "Loading simulator stylesheet: " + stylesheet);
+            scene.getStylesheets().add(stylesheet.toExternalForm());
             scene.widthProperty().addListener((observable, oldValue, width) -> {
                 boolean narrow = width.doubleValue() < 1080;
                 Orientation orientation = narrow ? Orientation.VERTICAL : Orientation.HORIZONTAL;
@@ -158,11 +193,14 @@ public final class SimulatorWindow extends Application {
                     requestStop();
                 }
             });
-            run.setOnAction(event -> startRun(false));
-            scratch.setOnAction(event -> startRun(true));
+            run.setOnAction(event -> startRun(false, false));
+            record.setOnAction(event -> startRun(false, true));
+            scratch.setOnAction(event -> startRun(true, false));
             stopButton.setOnAction(event -> requestStop());
             settingsButton.setOnAction(event -> showSettings());
+            aboutButton.setOnAction(event -> showAbout());
             setBusy(false);
+            if (configured) setStatus("Configured · ready to run", "ready");
             if (openId) setStatus("OpenID is not supported yet", "warning");
             pulse = new Timeline(new KeyFrame(Duration.millis(200), event -> refreshDiagnostics()));
             pulse.setCycleCount(Animation.INDEFINITE);
@@ -190,9 +228,11 @@ public final class SimulatorWindow extends Application {
                 }
             }, "simulator-shutdown");
             Runtime.getRuntime().addShutdownHook(shutdownHook);
+            startupLog("INFO", "Showing simulator window.");
             stage.show();
-            appendLog("INFO", "Simulator ready. Configure inputs in Settings, then start a collect.");
-        } catch (Exception | ServiceConfigurationError failure) {
+            startupLog("INFO", "Simulator ready. Configure inputs in Settings, then start a collect.");
+        } catch (Exception | LinkageError | ServiceConfigurationError failure) {
+            startupLog("ERROR", "Simulator startup failed:\n" + stackTrace(failure));
             Alert alert = new Alert(Alert.AlertType.ERROR, failure.getMessage(), ButtonType.CLOSE);
             alert.setTitle("Cannot start the simulator");
             alert.showAndWait();
@@ -201,12 +241,6 @@ public final class SimulatorWindow extends Application {
     }
 
     private Node header(CollectorPlugin collector) {
-        Label brand = new Label("TIBU  /  COLLECTOR LAB");
-        brand.getStyleClass().add("brand");
-        Label local = new Label("LOCAL DEVELOPMENT");
-        local.getStyleClass().add("eyebrow");
-        HBox top = new HBox(brand, spacer(), local);
-        top.setAlignment(Pos.CENTER_LEFT);
         Label name = new Label(message("title", collector.getClass().getSimpleName()));
         name.getStyleClass().add("collector-title");
         Label description = new Label(message("description.long", message("description", "Inspect, run and debug your collector.")));
@@ -214,30 +248,32 @@ public final class SimulatorWindow extends Application {
         description.getStyleClass().add("description");
         Label implementation = new Label(collector.getClass().getName());
         implementation.getStyleClass().add("implementation");
-        VBox identity = new VBox(6, name, description, implementation);
+        VBox identity = new VBox(3, name, description, implementation);
         HBox.setHgrow(identity, Priority.ALWAYS);
         StackPane logo = new StackPane(new Label("T"));
         logo.getStyleClass().add("logo");
         try (InputStream stream = collector.getClass().getClassLoader().getResourceAsStream("logo.png")) {
             if (stream != null) {
                 ImageView image = new ImageView(new Image(stream));
-                image.setFitWidth(104);
-                image.setFitHeight(68);
+                image.setFitWidth(56);
+                image.setFitHeight(56);
                 image.setPreserveRatio(true);
                 logo.getChildren().setAll(image);
             }
         } catch (IOException failure) {
             appendLog("WARN", "Collector logo could not be loaded.");
         }
-        HBox identityRow = new HBox(20, logo, identity);
+        HBox identityRow = new HBox(12, logo, identity);
         identityRow.setAlignment(Pos.CENTER_LEFT);
         run.setId("runButton");
+        record.setId("recordButton");
         scratch.setId("scratchButton");
         stopButton.setId("stopButton");
         settingsButton.setId("settingsButton");
+        aboutButton.setId("aboutButton");
         run.getStyleClass().add("primary");
         stopButton.getStyleClass().add("danger");
-        FlowPane actions = new FlowPane(10, 8, run, scratch, stopButton, settingsButton);
+        FlowPane actions = new FlowPane(8, 6, run, record, scratch, stopButton, settingsButton, aboutButton);
         actions.setAlignment(Pos.CENTER_RIGHT);
         HBox.setHgrow(actions, Priority.ALWAYS);
         status.getStyleClass().add("status");
@@ -252,7 +288,7 @@ public final class SimulatorWindow extends Application {
         progressRow.setAlignment(Pos.CENTER_LEFT);
         HBox metrics = new HBox(12, metric("ACCOUNTS", accountCount), metric("TRANSACTIONS", transactionCount), metric("RECURRING", recurringCount), metric("REQUESTS", requestCount));
         for (Node child : metrics.getChildren()) HBox.setHgrow(child, Priority.ALWAYS);
-        VBox heading = new VBox(16, top, identityRow, controls, progressRow, metrics);
+        VBox heading = new VBox(8, identityRow, controls, scenarioLink, progressRow, metrics);
         heading.getStyleClass().add("heading");
         return heading;
     }
@@ -404,6 +440,42 @@ public final class SimulatorWindow extends Application {
         dialog.show();
     }
 
+    private void showAbout() {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.initOwner(window);
+        dialog.initModality(Modality.NONE);
+        dialog.setTitle("À propos");
+        dialog.setHeaderText("Tibu Collector Simulator");
+        dialog.setResizable(true);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.getDialogPane().getStylesheets().add(getClass().getResource("simulator.css").toExternalForm());
+        TextArea information = textArea("""
+                Run resumes the saved local session. Run from scratch resets collect state and cookies, but keeps saved input settings.
+                Stop asks the collector to stop and save its progress. Results update after the worker finishes.
+
+                Settings lets you change collector inputs. Validated inputs are saved encrypted for each collector under ~/.config/tibudget/simulator/.
+                The encryption key is stored in the same directory. A process with access to your OS account can read it.
+                OpenID sign-in is not supported yet.
+
+                Run & Record resumes the session and records only the requests made during that run. A resumed session can start after login.
+                The red status and blinking dot indicate recording. After the run, the recording banner opens the saved scenario folder.
+                Cookies, collect state, downloads and HAR files are not encrypted. HAR files can contain credentials and personal data; review and redact them before sharing.
+
+                Select an account, transaction or recurring payment to inspect its fields and files. Select an HTTP exchange to inspect its request and response.
+                The network inspector keeps the latest %d HTTP exchanges in memory. Logs include collector messages, standard output and errors.
+
+                Local state: %s
+                Cookies: %s
+                Downloads: %s
+                HAR scenarios: %s
+                """.formatted(MAX_REQUESTS, directory.resolve("state.json").toAbsolutePath(), directory.resolve("cookies.bin").toAbsolutePath(),
+                directory.resolve("downloads").toAbsolutePath(), directory.resolve("scenarios").toAbsolutePath()));
+        information.setWrapText(true);
+        information.setPrefSize(720, 520);
+        dialog.getDialogPane().setContent(information);
+        dialog.show();
+    }
+
     private void showSettings() {
         if (isRunning()) return;
         inputForm.show(window, inputValues).ifPresent(values -> {
@@ -411,11 +483,18 @@ public final class SimulatorWindow extends Application {
             inputForm.protect(inputValues, redactor);
             configured = true;
             setStatus("Configured · ready to run", "ready");
-            appendLog("INFO", "Collector inputs validated. Input values are kept in memory only.");
+            try {
+                if (savedSettings == null) throw new IOException("Settings storage is unavailable");
+                savedSettings.save(inputForm.savedValues(inputValues));
+                appendLog("INFO", "Collector inputs validated and saved encrypted.");
+            } catch (Exception failure) {
+                appendLog("WARN", "Inputs could not be saved (" + failure.getClass().getSimpleName() + "). They remain in memory for this session.");
+                showError("Settings not saved", "Your inputs remain available for this session, but encrypted storage could not be written. Check the permissions of ~/.config/tibudget/simulator.");
+            }
         });
     }
 
-    private void startRun(boolean fromScratch) {
+    private void startRun(boolean fromScratch, boolean recording) {
         if (isRunning() || openId) return;
         if (!configured) {
             showSettings();
@@ -431,14 +510,15 @@ public final class SimulatorWindow extends Application {
         progress.setProgress(0);
         progressLabel.setText("0%");
         setBusy(true);
-        setStatus(fromScratch ? "Running from scratch" : "Running", "running");
-        footer.setText("Collect in progress · results update after the worker finishes");
+        if (recording) recordingAnimation.playFromStart();
+        setStatus(recording ? "● RECORDING HAR" : fromScratch ? "Running from scratch" : "Running", recording ? "recording" : "running");
         Map<String, Object> values = new LinkedHashMap<>(inputValues);
-        worker = new Thread(() -> collect(fromScratch, values), "tibu-collect");
+        worker = new Thread(() -> collect(fromScratch, recording, values), "tibu-collect");
         worker.start();
     }
 
-    private void collect(boolean fromScratch, Map<String, Object> values) {
+    private void collect(boolean fromScratch, boolean recording, Map<String, Object> values) {
+        Path scenario = null;
         SimulatorState state = null;
         boolean complete = false;
         Throwable failure = null;
@@ -464,6 +544,11 @@ public final class SimulatorWindow extends Application {
             OkHttpClient client = new OkHttpClient.Builder().cookieJar(cookies).addNetworkInterceptor(new NetworkInspector(redactor, networkQueue::add))
                     .connectTimeout(java.time.Duration.ofSeconds(30)).readTimeout(java.time.Duration.ofSeconds(60)).callTimeout(java.time.Duration.ofSeconds(120)).build();
             OkHttpInternetProvider internet = new OkHttpInternetProvider(client).downloadDir(directory.resolve("downloads").toFile()).rateLimiter(2);
+            if (recording) {
+                internet.harDir(directory.resolve("scenarios").toFile());
+                scenario = internet.getHarDir().toPath().toAbsolutePath();
+                appendLog("INFO", "Recording HAR scenario: " + scenario);
+            }
             CollectorPlugin collector = factory.get();
             activeCollector = collector;
             collector.init(internet, counterpartyProvider(), this::requestOtp, new PDFToolsProviderPDFBox(), new HashMap<>(state.settings), state.accounts, state.recurringPayments);
@@ -495,11 +580,23 @@ public final class SimulatorWindow extends Application {
             SimulatorState result = state;
             boolean finished = complete;
             Throwable error = failure;
-            Platform.runLater(() -> finishRun(result, finished, error));
+            Path recordedScenario = scenario;
+            if (recordedScenario != null) appendLog("INFO", "HAR scenario saved (including partial requests if stopped or failed): " + recordedScenario);
+            Platform.runLater(() -> finishRun(result, finished, error, recordedScenario));
         }
     }
 
-    private void finishRun(SimulatorState state, boolean complete, Throwable failure) {
+    private void finishRun(SimulatorState state, boolean complete, Throwable failure, Path scenario) {
+        recordingAnimation.stop();
+        recordIcon.setOpacity(1);
+        if (scenario != null) {
+            String outcome = failure != null ? "failed" : stopRequested ? "stopped" : complete ? "complete" : "paused";
+            scenarioLink.setText("● HAR recording saved: " + scenario.getFileName() + " · " + outcome + " · open folder");
+            scenarioLink.setTooltip(new Tooltip(scenario.toString()));
+            scenarioLink.setOnAction(event -> getHostServices().showDocument(scenario.toUri().toString()));
+            scenarioLink.setVisible(true);
+            scenarioLink.setManaged(true);
+        }
         refreshDiagnostics();
         if (state != null) showResults(state);
         CollectorPlugin collector = activeCollector;
@@ -512,7 +609,6 @@ public final class SimulatorWindow extends Application {
         else if (stopRequested) setStatus("Stopped · progress saved", "warning");
         else if (complete) setStatus("Collect complete", "ready");
         else setStatus("Paused · run again to resume", "warning");
-        footer.setText("State: " + directory.toAbsolutePath() + " · latest " + MAX_REQUESTS + " HTTP exchanges retained in memory");
         if (closing) Platform.exit();
     }
 
@@ -758,6 +854,14 @@ public final class SimulatorWindow extends Application {
         };
     }
 
+    // Keep startup diagnostics visible even when the window cannot open and stderr is redirected.
+    private void startupLog(String level, String text) {
+        String safeText = redactor.text(text);
+        PrintStream terminal = originalErr == null ? System.err : originalErr;
+        terminal.println(CLOCK.format(Instant.now()) + "  " + level + "  " + safeText);
+        appendLog(level, safeText);
+    }
+
     private void appendLog(String level, String text) {
         if (logQueue.size() < 5000) logQueue.add(CLOCK.format(Instant.now()) + "  " + level + "  " + redactor.text(text) + "\n");
     }
@@ -765,6 +869,7 @@ public final class SimulatorWindow extends Application {
     @Override
     public void stop() {
         if (pulse != null) pulse.stop();
+        if (recordingAnimation != null) recordingAnimation.stop();
         if (logHandler != null) {
             Logger root = Logger.getLogger("");
             root.removeHandler(logHandler);
@@ -784,6 +889,7 @@ public final class SimulatorWindow extends Application {
 
     private void setBusy(boolean busy) {
         run.setDisable(busy || openId);
+        record.setDisable(busy || openId);
         scratch.setDisable(busy || openId);
         settingsButton.setDisable(busy || openId);
         stopButton.setDisable(!busy);

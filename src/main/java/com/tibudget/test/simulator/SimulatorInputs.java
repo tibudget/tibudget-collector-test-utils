@@ -1,5 +1,8 @@
 package com.tibudget.test.simulator;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.tibudget.api.CollectorPlugin;
 import com.tibudget.api.Input;
 import com.tibudget.api.exceptions.ParameterError;
@@ -24,6 +27,7 @@ import java.util.function.Supplier;
  * Use the documented getter/setter contract instead of writing private fields directly.
  */
 final class SimulatorInputs {
+    private static final Gson JSON = new GsonBuilder().serializeNulls().create();
     private final List<Property> properties = new ArrayList<>();
     private final Supplier<CollectorPlugin> factory;
     private final ResourceBundle messages;
@@ -63,7 +67,7 @@ final class SimulatorInputs {
         dialog.getDialogPane().getButtonTypes().addAll(save, ButtonType.CANCEL);
         VBox form = new VBox(14);
         form.setFillWidth(true);
-        Label explanation = new Label("Inputs stay in memory. Cookies and collect state are stored locally under target/simulator.");
+        Label explanation = new Label("Inputs are saved encrypted in your user configuration directory. The encryption key is local to your OS account.");
         explanation.setWrapText(true);
         explanation.getStyleClass().add("muted");
         form.getChildren().add(explanation);
@@ -156,6 +160,24 @@ final class SimulatorInputs {
         });
         dialog.setResultConverter(button -> button == save ? accepted : null);
         return dialog.showAndWait();
+    }
+
+    JsonObject savedValues(Map<String, Object> values) {
+        return JSON.toJsonTree(values).getAsJsonObject();
+    }
+
+    Map<String, Object> restore(JsonObject saved, DiagnosticRedactor redactor) throws Exception {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (Property property : properties) {
+            if (saved.has(property.name)) values.put(property.name, JSON.fromJson(saved.get(property.name), property.type));
+        }
+        protect(values, redactor);
+        CollectorPlugin candidate = factory.get();
+        apply(candidate, values);
+        if (candidate.validate().stream().anyMatch(message -> message.getType() == MessageDto.MessageType.ERROR)) {
+            throw new IllegalArgumentException("Saved inputs need validation in Settings");
+        }
+        return values;
     }
 
     void apply(CollectorPlugin collector, Map<String, Object> values) throws Exception {
