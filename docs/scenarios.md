@@ -111,11 +111,12 @@ providers must therefore be offline as well.
 ## HTTP matching and format limits
 
 Each provider call creates one HAR 1.2 file containing one entry. The filename
-starts with the call index (`0001`, `0002`, ...), followed by `get`, `post` or
-`dl` and a normalized URL. Long URLs use a shortened filename plus a stable
+starts with the call index (`0001`, `0002`, ...), followed by `get`, `post`, `dl` or
+`dl_post` and a normalized URL. Long URLs use a shortened filename plus a stable
 hash. Replay also checks the exact URL and HTTP method inside the HAR, so
 filename normalization cannot hide an URL change. Query parameter order is
-significant. A download has its own `dl` filename marker and HTTP method `GET`.
+significant. A GET download uses the `dl` filename marker. A POST download uses
+`dl_post` and records its payload for optional request-body checks.
 
 An unexpected call, missing file, invalid HAR or unsupported content encoding
 throws `IOException`. Replay never falls back to the network. Call

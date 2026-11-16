@@ -254,7 +254,7 @@ public class OkHttpInternetProvider implements InternetProvider {
         }
         try (java.util.stream.Stream<java.nio.file.Path> files = Files.list(replayDir.toPath())) {
             for (java.nio.file.Path file : files.toList()) {
-                java.util.regex.Matcher name = java.util.regex.Pattern.compile("^(\\d+)_(get|post|dl)_.+\\.(har|html)$").matcher(file.getFileName().toString());
+                java.util.regex.Matcher name = java.util.regex.Pattern.compile("^(\\d+)_(get|post|dl_post|dl)_.+\\.(har|html)$").matcher(file.getFileName().toString());
                 if (name.matches() && Long.parseLong(name.group(1)) > trafficIndex.get()) {
                     throw new IOException("Scenario replay is incomplete: request " + name.group(1) + " was not replayed");
                 }
@@ -330,7 +330,7 @@ public class OkHttpInternetProvider implements InternetProvider {
             File out = new File(harDir, fileName
                     .replaceFirst("\\.html$", ".har"));
             JsonObject request = new JsonObject();
-            request.addProperty("method", "dl".equals(method) ? "GET" : method);
+            request.addProperty("method", "dl".equals(method) ? "GET" : "dl_post".equals(method) ? "POST" : method);
             request.addProperty("url", url);
             request.addProperty("httpVersion", response.protocol);
             request.add("cookies", new JsonArray());
@@ -438,12 +438,12 @@ public class OkHttpInternetProvider implements InternetProvider {
         File file = new File(replayDir, legacy.getName().replaceFirst("\\.html$", ".har"));
         if (!file.isFile()) {
             if (legacy.isFile()) {
-                if (verifyReplayBody && "POST".equals(method)) throw new ReplayMismatchException(index, "BODY_NOT_RECORDED");
+                if (verifyReplayBody && ("POST".equals(method) || "dl_post".equals(method))) throw new ReplayMismatchException(index, "BODY_NOT_RECORDED");
                 String body = Files.readString(legacy.toPath(), StandardCharsets.UTF_8);
-                if ("dl".equals(method) && !new File(body).isFile()) {
+                if (("dl".equals(method) || "dl_post".equals(method)) && !new File(body).isFile()) {
                     throw new IOException("Downloaded file from legacy recording is missing: " + body);
                 }
-                return new Response(200, "OK", "dl".equals(method) ? "GET" : method,
+                return new Response(200, "OK", "dl".equals(method) ? "GET" : "dl_post".equals(method) ? "POST" : method,
                         url, "http/1.1", body, new HashMap<>());
             }
             throw missingReplay(index, method, url);
@@ -456,12 +456,12 @@ public class OkHttpInternetProvider implements InternetProvider {
             }
             JsonObject entry = entries.get(0).getAsJsonObject();
             JsonObject request = entry.getAsJsonObject("request");
-            String httpMethod = "dl".equals(method) ? "GET" : method;
+            String httpMethod = "dl".equals(method) ? "GET" : "dl_post".equals(method) ? "POST" : method;
             if (!url.equals(request.get("url").getAsString())
                     || !httpMethod.equals(request.get("method").getAsString())) {
                 throw new ReplayMismatchException(index, "METHOD_OR_URL");
             }
-            if (verifyReplayBody && "POST".equals(method)) {
+            if (verifyReplayBody && ("POST".equals(method) || "dl_post".equals(method))) {
                 JsonObject postData = request.getAsJsonObject("postData");
                 if (postData == null || !postData.has("text")) throw new ReplayMismatchException(index, "BODY_NOT_RECORDED");
                 if (!java.util.Objects.equals(requestBody, postData.get("text").getAsString())) throw new ReplayMismatchException(index, "BODY");
@@ -480,7 +480,7 @@ public class OkHttpInternetProvider implements InternetProvider {
             byte[] bytes = content.has("encoding") && "base64".equals(content.get("encoding").getAsString())
                     ? Base64.getDecoder().decode(text) : text.getBytes(StandardCharsets.UTF_8);
             String body;
-            if ("dl".equals(method)) {
+            if ("dl".equals(method) || "dl_post".equals(method)) {
                 File download = File.createTempFile("dl_", "." + guessExtension(forceContentType != null
                         ? forceContentType : content.get("mimeType").getAsString()), initDownloadDir(downloadDir));
                 Files.write(download.toPath(), bytes);
@@ -503,7 +503,7 @@ public class OkHttpInternetProvider implements InternetProvider {
                 try {
                     JsonObject request = JsonParser.parseString(Files.readString(file)).getAsJsonObject().getAsJsonObject("log")
                             .getAsJsonArray("entries").get(0).getAsJsonObject().getAsJsonObject("request");
-                    boolean sameMethod = ("dl".equals(method) ? "GET" : method).equals(request.get("method").getAsString());
+                    boolean sameMethod = ("dl".equals(method) ? "GET" : "dl_post".equals(method) ? "POST" : method).equals(request.get("method").getAsString());
                     boolean sameUrl = url.equals(request.get("url").getAsString());
                     String reason = "OPERATION";
                     if (!sameMethod && !sameUrl) reason = "METHOD_AND_URL";
@@ -576,9 +576,23 @@ public class OkHttpInternetProvider implements InternetProvider {
 
         Request request = buildRequest("GET", url, null, headers);
 
+        return executeDownload(request, "dl", forceContentType, null);
+    }
+
+    @Override
+    public Response downloadFile(String url, Map<String, String> headers, String forceContentType, String body, String bodyContentType) throws IOException {
+        RequestBody requestBody = RequestBody.create(body, MediaType.parse(bodyContentType));
+        Map<String, String> requestHeaders = headers == null ? new HashMap<>() : new HashMap<>(headers);
+        requestHeaders.entrySet().removeIf(header -> "Content-Type".equalsIgnoreCase(header.getKey()));
+        requestHeaders.put("Content-Type", bodyContentType);
+        Request request = buildRequest("POST", url, requestBody, requestHeaders);
+        return executeDownload(request, "dl_post", forceContentType, body);
+    }
+
+    private Response executeDownload(Request request, String operation, String forceContentType, String requestBody) throws IOException {
         requestCount.incrementAndGet();
         if (replayDir != null) {
-            return replay("dl", request.url().toString(), forceContentType, null);
+            return replay(operation, request.url().toString(), forceContentType, requestBody);
         }
 
         rateLimiter.acquire();
@@ -601,8 +615,8 @@ public class OkHttpInternetProvider implements InternetProvider {
                 in.transferTo(os);
             }
 
-            Response result = buildResponse(response, "GET", out.getAbsolutePath());
-            recordIfEnabled("dl", request, result, out);
+            Response result = buildResponse(response, request.method(), out.getAbsolutePath());
+            recordIfEnabled(operation, request, result, out);
             return result;
         }
     }

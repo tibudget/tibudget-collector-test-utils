@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * Replacement copies are candidates for review, not a guarantee that all personal data was removed.
  */
 public final class HarScenario {
-    private static final Pattern NAME = Pattern.compile("^(\\d+)_(get|post|dl)_.+\\.har$");
+    private static final Pattern NAME = Pattern.compile("^(\\d+)_(get|post|dl_post|dl)_.+\\.har$");
     private static final Pattern PERSONAL = Pattern.compile("(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}|bearer\\s+\\S+|\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b");
     private static final Gson JSON = new GsonBuilder().setPrettyPrinting().serializeNulls().disableHtmlEscaping().create();
 
