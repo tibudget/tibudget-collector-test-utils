@@ -18,7 +18,9 @@ import java.util.zip.InflaterInputStream;
  * The client is injected into the supplied OkHttpInternetProvider; no collector request bypasses that provider.
  */
 final class NetworkInspector implements Interceptor {
-    private static final long BODY_LIMIT = 262_144;
+    private static final long REQUEST_BODY_LIMIT = 262_144;
+    static final int RESPONSE_BODY_LIMIT = 8 * 1024 * 1024;
+    static final String TRUNCATION_NOTICE = "[preview limited to 8 MiB]";
     private final AtomicLong sequence = new AtomicLong();
     private final DiagnosticRedactor redactor;
     private final Consumer<Exchange> listener;
@@ -39,7 +41,7 @@ final class NetworkInspector implements Interceptor {
         String requestBody = "(empty)";
         if (request.body() != null) {
             long length = request.body().contentLength();
-            if (length >= 0 && length <= BODY_LIMIT && !request.body().isDuplex() && !request.body().isOneShot()) {
+            if (length >= 0 && length <= REQUEST_BODY_LIMIT && !request.body().isDuplex() && !request.body().isOneShot()) {
                 Buffer buffer = new Buffer();
                 request.body().writeTo(buffer);
                 requestBody = redactor.body(buffer.readString(StandardCharsets.UTF_8));
@@ -58,17 +60,17 @@ final class NetworkInspector implements Interceptor {
             if (type.contains("json") || type.contains("text") || type.contains("xml") || type.contains("javascript")) {
                 // Peeking does not consume the response used by the collector.
                 try {
-                    byte[] preview = response.peekBody(BODY_LIMIT + 1).bytes();
+                    byte[] preview = response.peekBody(RESPONSE_BODY_LIMIT + 1L).bytes();
                     String encoding = response.header("Content-Encoding", "");
                     if (encoding.equalsIgnoreCase("gzip") || encoding.equalsIgnoreCase("deflate")) {
                         // Network interceptors see compressed bytes before OkHttp's transparent gzip handling.
                         try (InputStream decoded = encoding.equalsIgnoreCase("gzip") ? new GZIPInputStream(new ByteArrayInputStream(preview))
                                 : new InflaterInputStream(new ByteArrayInputStream(preview))) {
-                            preview = decoded.readNBytes((int) BODY_LIMIT + 1);
+                            preview = decoded.readNBytes(RESPONSE_BODY_LIMIT + 1);
                         }
                     }
-                    body = redactor.body(new String(preview, 0, (int) Math.min(preview.length, BODY_LIMIT), StandardCharsets.UTF_8));
-                    if (preview.length > BODY_LIMIT) body += "\n[preview limited to 256 KiB]";
+                    body = redactor.body(new String(preview, 0, Math.min(preview.length, RESPONSE_BODY_LIMIT), StandardCharsets.UTF_8));
+                    if (preview.length > RESPONSE_BODY_LIMIT) body += "\n" + TRUNCATION_NOTICE;
                 } catch (IOException failure) {
                     // A failed diagnostic preview must not turn a valid request into a collect failure.
                     body = "[text preview unavailable or compressed body truncated]";

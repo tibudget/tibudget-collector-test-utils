@@ -13,7 +13,8 @@ import java.util.regex.Pattern;
  */
 final class DiagnosticRedactor {
     private static final String MASK = "[hidden]";
-    private static final Pattern JSON_STRING = Pattern.compile("(\"([^\"\\\\]+)\"\\s*:\\s*\")((?:\\\\.|[^\"\\\\])*)(\"|$)");
+    // The possessive repetition avoids recursive regex backtracking on large embedded strings.
+    private static final Pattern JSON_STRING = Pattern.compile("(\"([^\"\\\\]+)\"\\s*:\\s*\")((?:\\\\.|[^\"\\\\])*+)(\"|$)");
     private static final Pattern FORM_SECRET = Pattern.compile("(?i)((?:password|passwd|secret|token|access_token|refresh_token|csrf|captcha|otp|code|username|email)=)[^&\\s]*");
     private static final Pattern BEARER = Pattern.compile("(?i)(Bearer\\s+)[a-z0-9._~+/=-]+");
     private final Set<String> secrets = ConcurrentHashMap.newKeySet();

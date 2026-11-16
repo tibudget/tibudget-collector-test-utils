@@ -27,6 +27,9 @@ public class OkHttpInternetProvider implements InternetProvider {
     private File downloadDir = new File("target/downloads/");
     private RateLimiter rateLimiter = new RateLimiter(2);
     private File replayDir;
+    private boolean verifyReplayBody;
+    private int failReplayRequest;
+    private boolean replayFailureUsed;
     private int stopAfterRequest;
     private Runnable stopAction;
     private File htmlDir;
@@ -34,6 +37,7 @@ public class OkHttpInternetProvider implements InternetProvider {
     private File cookiesFile;
     private final String recordingSession = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss_SSS"));
     private final Map<File, File> recordingDirectories = new HashMap<>();
+    private final AtomicInteger requestCount = new AtomicInteger();
     private final AtomicInteger trafficIndex = new AtomicInteger(0);
 
     /**
@@ -189,6 +193,32 @@ public class OkHttpInternetProvider implements InternetProvider {
      */
     public File getHarDir() {
         return harDir;
+    }
+
+    /**
+     * Check POST bodies against HAR postData as well as method and URL. Disabled by default for compatibility.
+     * Legacy HTML recordings do not support this check and are rejected when it is enabled for POST.
+     */
+    public OkHttpInternetProvider verifyReplayRequestBody(boolean enabled) {
+        verifyReplayBody = enabled;
+        return this;
+    }
+
+    /**
+     * Fail once before reading the selected offline response. A retry can then read the same recording.
+     */
+    public OkHttpInternetProvider failReplayRequest(int requestNumber) {
+        if (requestNumber < 1) throw new IllegalArgumentException("Failure request number must be at least 1");
+        failReplayRequest = requestNumber;
+        replayFailureUsed = false;
+        return this;
+    }
+
+    /**
+     * Return the number of request attempts, including failed network calls and injected replay failures.
+     */
+    public int getRequestCount() {
+        return requestCount.get();
     }
 
     /**
@@ -390,20 +420,25 @@ public class OkHttpInternetProvider implements InternetProvider {
         }
     }
 
-    private Response replay(String method, String url, String forceContentType) throws IOException {
-        Response response = readReplay(method, url, forceContentType);
+    private Response replay(String method, String url, String forceContentType, String requestBody) throws IOException {
+        if (!replayFailureUsed && failReplayRequest == trafficIndex.get() + 1) {
+            replayFailureUsed = true;
+            throw new IOException("Injected offline failure at request " + failReplayRequest);
+        }
+        Response response = readReplay(method, url, forceContentType, requestBody);
         if (trafficIndex.get() == stopAfterRequest && stopAction != null) {
             stopAction.run();
         }
         return response;
     }
 
-    private Response readReplay(String method, String url, String forceContentType) throws IOException {
+    private Response readReplay(String method, String url, String forceContentType, String requestBody) throws IOException {
         int index = trafficIndex.incrementAndGet();
         File legacy = new File(replayDir, trafficFileName(index, method, url));
         File file = new File(replayDir, legacy.getName().replaceFirst("\\.html$", ".har"));
         if (!file.isFile()) {
             if (legacy.isFile()) {
+                if (verifyReplayBody && "POST".equals(method)) throw new ReplayMismatchException(index, "BODY_NOT_RECORDED");
                 String body = Files.readString(legacy.toPath(), StandardCharsets.UTF_8);
                 if ("dl".equals(method) && !new File(body).isFile()) {
                     throw new IOException("Downloaded file from legacy recording is missing: " + body);
@@ -411,8 +446,7 @@ public class OkHttpInternetProvider implements InternetProvider {
                 return new Response(200, "OK", "dl".equals(method) ? "GET" : method,
                         url, "http/1.1", body, new HashMap<>());
             }
-            throw new IOException("Scenario mismatch at request " + index + " (" + method + " " + url
-                    + "): expected recording " + file.getAbsolutePath());
+            throw missingReplay(index, method, url);
         }
         try {
             JsonObject log = JsonParser.parseString(Files.readString(file.toPath())).getAsJsonObject().getAsJsonObject("log");
@@ -425,7 +459,12 @@ public class OkHttpInternetProvider implements InternetProvider {
             String httpMethod = "dl".equals(method) ? "GET" : method;
             if (!url.equals(request.get("url").getAsString())
                     || !httpMethod.equals(request.get("method").getAsString())) {
-                throw new IOException("Scenario mismatch at request " + index + " (" + method + " " + url + ")");
+                throw new ReplayMismatchException(index, "METHOD_OR_URL");
+            }
+            if (verifyReplayBody && "POST".equals(method)) {
+                JsonObject postData = request.getAsJsonObject("postData");
+                if (postData == null || !postData.has("text")) throw new ReplayMismatchException(index, "BODY_NOT_RECORDED");
+                if (!java.util.Objects.equals(requestBody, postData.get("text").getAsString())) throw new ReplayMismatchException(index, "BODY");
             }
             JsonObject response = entry.getAsJsonObject("response");
             Map<String, String> headers = new HashMap<>();
@@ -455,6 +494,28 @@ public class OkHttpInternetProvider implements InternetProvider {
         } catch (RuntimeException e) {
             throw new IOException("Invalid HAR recording: " + file, e);
         }
+    }
+
+    private ReplayMismatchException missingReplay(int index, String method, String url) throws IOException {
+        String prefix = String.format(Locale.ROOT, "%04d_", index);
+        try (var files = Files.list(replayDir.toPath())) {
+            for (var file : files.filter(path -> path.getFileName().toString().startsWith(prefix) && path.getFileName().toString().endsWith(".har")).sorted().toList()) {
+                try {
+                    JsonObject request = JsonParser.parseString(Files.readString(file)).getAsJsonObject().getAsJsonObject("log")
+                            .getAsJsonArray("entries").get(0).getAsJsonObject().getAsJsonObject("request");
+                    boolean sameMethod = ("dl".equals(method) ? "GET" : method).equals(request.get("method").getAsString());
+                    boolean sameUrl = url.equals(request.get("url").getAsString());
+                    String reason = "OPERATION";
+                    if (!sameMethod && !sameUrl) reason = "METHOD_AND_URL";
+                    else if (!sameMethod) reason = "METHOD";
+                    else if (!sameUrl) reason = "URL";
+                    return new ReplayMismatchException(index, reason);
+                } catch (RuntimeException invalid) {
+                    return new ReplayMismatchException(index, "RECORDING_INVALID");
+                }
+            }
+        }
+        return new ReplayMismatchException(index, "RECORDING_MISSING");
     }
 
     private String normalizeUrl(String url) {
@@ -515,8 +576,9 @@ public class OkHttpInternetProvider implements InternetProvider {
 
         Request request = buildRequest("GET", url, null, headers);
 
+        requestCount.incrementAndGet();
         if (replayDir != null) {
-            return replay("dl", request.url().toString(), forceContentType);
+            return replay("dl", request.url().toString(), forceContentType, null);
         }
 
         rateLimiter.acquire();
@@ -550,8 +612,15 @@ public class OkHttpInternetProvider implements InternetProvider {
      * ========================= */
 
     private Response execute(Request request, String method) throws IOException {
+        requestCount.incrementAndGet();
         if (replayDir != null) {
-            return replay(method, request.url().toString(), null);
+            String body = null;
+            if (verifyReplayBody && request.body() != null) {
+                okio.Buffer buffer = new okio.Buffer();
+                request.body().writeTo(buffer);
+                body = buffer.readUtf8();
+            }
+            return replay(method, request.url().toString(), null, body);
         }
         rateLimiter.acquire();
         try (okhttp3.Response response = client.newCall(request).execute()) {

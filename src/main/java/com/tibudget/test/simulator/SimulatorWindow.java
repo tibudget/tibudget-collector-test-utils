@@ -24,6 +24,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.stage.*;
 import javafx.util.Duration;
+import javafx.scene.web.WebView;
 import okhttp3.OkHttpClient;
 
 import java.io.*;
@@ -423,20 +424,58 @@ public final class SimulatorWindow extends Application {
         TextArea summary = textArea("");
         TextArea request = textArea("");
         TextArea response = textArea("");
+        WebView htmlPreview = new WebView();
+        htmlPreview.setId("htmlResponsePreview");
+        htmlPreview.getEngine().setJavaScriptEnabled(false);
+        TextArea jsonPreview = textArea("");
+        jsonPreview.setId("jsonResponsePreview");
+        StackPane previewContent = new StackPane(htmlPreview, jsonPreview);
+        Tab previewTab = tab("Preview", previewContent);
+        Button openUrl = new Button("Open URL in browser ↗");
+        openUrl.setId("openRequestUrl");
+        openUrl.setTooltip(new Tooltip("Open the displayed GET URL using the browser's own session. URLs with hidden authentication values cannot be opened."));
+        openUrl.setOnAction(event -> {
+            NetworkInspector.Exchange current = exchanges.stream().filter(exchange -> exchange.id() == selected.id()).findFirst().orElse(selected);
+            if (HtmlResponsePreview.canOpenUrl(current.method(), current.url())) getHostServices().showDocument(current.url());
+        });
+        String[] loadedHtml = {null};
         Runnable refresh = () -> {
             NetworkInspector.Exchange current = exchanges.stream().filter(exchange -> exchange.id() == selected.id()).findFirst().orElse(selected);
             dialog.setTitle("HTTP " + current.method() + " · " + current.statusText());
-            summary.setText("Started: " + current.date() + "\nStatus: " + current.statusText() + "\nDuration: " + current.milliseconds() + " ms\nSize: " + current.bytes() + " bytes\n" + current.error());
+            boolean html = current.status() != null && HtmlResponsePreview.isHtml(current.responseHeaders(), current.responseBody());
+            String title = html ? HtmlResponsePreview.pageTitle(current.responseBody()) : "";
+            summary.setText((html ? "Page title: " + (title.isBlank() ? "(no title)" : title) + "\n" : "") + "Started: " + current.date() + "\nStatus: " + current.statusText() + "\nDuration: " + current.milliseconds() + " ms\nSize: " + current.bytes() + " bytes\n" + current.error());
             request.setText(current.requestHeaders() + "\n" + current.requestBody());
             response.setText(current.responseHeaders() + "\n" + current.responseBody());
+            String json = !html && current.status() != null ? HtmlResponsePreview.formattedJson(current.responseBody()) : null;
+            previewTab.setDisable(!html && json == null);
+            openUrl.setDisable(!HtmlResponsePreview.canOpenUrl(current.method(), current.url()));
+            htmlPreview.setVisible(html);
+            htmlPreview.setManaged(html);
+            jsonPreview.setVisible(!html);
+            jsonPreview.setManaged(!html);
+            jsonPreview.setText(json == null ? "" : json);
+            if (html && previewTab.isSelected() && !Objects.equals(loadedHtml[0], current.responseBody())) {
+                loadedHtml[0] = current.responseBody();
+                htmlPreview.getEngine().loadContent(HtmlResponsePreview.render(redactor.body(current.responseBody())), "text/html");
+            }
         };
         javafx.collections.ListChangeListener<NetworkInspector.Exchange> updates = change -> refresh.run();
         exchanges.addListener(updates);
-        dialog.setOnHidden(event -> exchanges.removeListener(updates));
+        dialog.setOnHidden(event -> {
+            exchanges.removeListener(updates);
+            htmlPreview.getEngine().load(null);
+        });
         refresh.run();
-        TabPane details = tabs(tab("Summary", summary), tab("Request", request), tab("Response", response));
+        TabPane details = tabs(tab("Summary", summary), tab("Request", request), tab("Response", response), previewTab);
+        // TabPane selection changes before Tab.isSelected(); load after the tab itself becomes selected.
+        previewTab.selectedProperty().addListener((observable, oldValue, selectedPreview) -> {
+            if (selectedPreview) refresh.run();
+        });
         details.setPrefSize(900, 560);
-        dialog.getDialogPane().setContent(details);
+        VBox content = new VBox(10, new HBox(openUrl), details);
+        VBox.setVgrow(details, Priority.ALWAYS);
+        dialog.getDialogPane().setContent(content);
         dialog.show();
     }
 
@@ -559,7 +598,7 @@ public final class SimulatorWindow extends Application {
             }
             if (stopRequested) collector.stop();
             else complete = collector.collect();
-        } catch (Exception | LinkageError | AssertionError | ServiceConfigurationError exception) {
+        } catch (Exception | LinkageError | AssertionError | ServiceConfigurationError | StackOverflowError exception) {
             failure = exception;
             if (exception instanceof MessagesException messagesException) {
                 messagesException.getMessages().getAllMessages().forEach(message -> appendLog("ERROR", localizedMessage(message)));
@@ -605,7 +644,16 @@ public final class SimulatorWindow extends Application {
         activeCollector = null;
         worker = null;
         setBusy(false);
-        if (failure != null) setStatus("Collect failed · inspect logs", "error");
+        if (failure != null) {
+            setStatus("Collect failed · inspect logs", "error");
+            if (!closing) {
+                Alert error = new Alert(Alert.AlertType.ERROR, "The collect failed (" + failure.getClass().getSimpleName() + "). See Live logs for details.", ButtonType.OK);
+                error.initOwner(window);
+                error.setTitle("Collect failed");
+                error.setHeaderText("The collect could not finish.");
+                error.show();
+            }
+        }
         else if (stopRequested) setStatus("Stopped · progress saved", "warning");
         else if (complete) setStatus("Collect complete", "ready");
         else setStatus("Paused · run again to resume", "warning");

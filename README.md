@@ -213,3 +213,25 @@ can also read the key. This does not encrypt existing cookies, collect state or
 HAR files. Delete the collector's `.enc` file to forget its saved inputs; deleting
 `settings.key` makes every saved input file unreadable. Run from scratch keeps
 saved input settings.
+
+## Automated checks
+
+Use the [headless tools](docs/agent-tools.md) to run or record a collect, replay HAR
+scenarios offline, request a graceful stop, validate DTOs, compare results, test
+every stop/resume boundary and prepare scenario copies for review. Run
+`com.tibudget.test.simulator.CollectorCli help` with your collector test classpath,
+or pass `--headless` and a command to `TibuSimulator`. The desktop launch is unchanged.
+
+### Preview an HTTP HTML response
+
+In **HTTP requests**, select a request, choose **Inspect exchange**, then open
+**Preview**. This tab formats JSON responses and renders captured,
+redacted response using JavaFX WebView. It does not fetch the current website or
+share the collector session with a browser. Scripts, navigation, forms and external
+resources are disabled; inline styles are preserved. The HTML page title is shown even when its body is empty. **Open URL in browser**
+opens a GET URL in your default browser using its own session. This button is
+disabled for other methods and URLs containing masked authentication values.
+The inspector captures up to 8 MiB of decoded response content. A truncation notice
+is shown only when the response exceeds this limit. Previously captured responses
+remain truncated; run the collect again to capture them with the new limit. Previews remain
+in memory and no separate HTML snapshot is written to disk.

@@ -3,6 +3,7 @@ package com.tibudget.test.simulator;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonArray;
 import com.tibudget.api.CollectorPlugin;
 import com.tibudget.api.Input;
 import com.tibudget.api.exceptions.ParameterError;
@@ -160,6 +161,27 @@ final class SimulatorInputs {
         });
         dialog.setResultConverter(button -> button == save ? accepted : null);
         return dialog.showAndWait();
+    }
+
+    JsonArray schema() {
+        JsonArray schema = new JsonArray();
+        for (Property property : properties) {
+            JsonObject input = new JsonObject();
+            input.addProperty("name", property.name);
+            input.addProperty("type", property.type.getSimpleName());
+            input.addProperty("required", property.input.required());
+            input.addProperty("password", property.input.password());
+            input.addProperty("maxLength", property.input.maxlen());
+            if (property.type.isEnum()) input.add("choices", JSON.toJsonTree(property.type.getEnumConstants()));
+            schema.add(input);
+        }
+        return schema;
+    }
+
+    void checkNames(JsonObject saved) {
+        Set<String> names = new HashSet<>();
+        properties.forEach(property -> names.add(property.name));
+        if (!names.containsAll(saved.keySet())) throw new IllegalArgumentException("Unknown collector input name");
     }
 
     JsonObject savedValues(Map<String, Object> values) {
